@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     runway_poll_interval_seconds: float = 5.0
     runway_poll_attempts: int = 60
     elevenlabs_api_key: str | None = None
+    kokoro_tts_enabled: bool = True
+    kokoro_repo_id: str = "hexgrad/Kokoro-82M"
+    kokoro_voice: str = "af_heart"
+    kokoro_lang_code: str = "a"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

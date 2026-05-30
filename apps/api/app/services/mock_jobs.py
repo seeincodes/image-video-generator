@@ -2,6 +2,11 @@ from datetime import datetime
 from uuid import UUID
 
 from app.models import GenerationJob, JobStatus, JobType, MediaAsset, MediaType, ProjectStatus
+from app.services.kokoro_tts import (
+    KokoroTTSFailed,
+    KokoroTTSUnavailable,
+    generate_kokoro_speech,
+)
 from app.services.openai_images import (
     OpenAIImageGenerationFailed,
     OpenAIImageGenerationUnavailable,
@@ -76,17 +81,21 @@ def _create_asset_for_job(job: GenerationJob) -> MediaAsset:
                 metadata=metadata,
             )
         case JobType.tts:
+            (
+                storage_url,
+                provider,
+                mime_type,
+                duration_seconds,
+                metadata,
+            ) = _generate_audio_asset(job)
             return MediaAsset(
                 project_id=job.project_id,
                 type=MediaType.generated_audio,
-                provider=job.provider,
-                storage_url=_mock_asset_url(job, "voice.mp3"),
-                mime_type="audio/mpeg",
-                duration_seconds=4.0,
-                metadata={
-                    "script": job.input.get("script"),
-                    "voice_preset_id": job.input.get("voice_preset_id"),
-                },
+                provider=provider,
+                storage_url=storage_url,
+                mime_type=mime_type,
+                duration_seconds=duration_seconds,
+                metadata=metadata,
             )
         case JobType.final_export:
             return MediaAsset(
@@ -162,4 +171,36 @@ def _generate_video_asset(job: GenerationJob) -> tuple[str, str, dict[str, objec
             metadata | {"mode": "mock", "reason": str(error)},
         )
     except RunwayGenerationFailed:
+        raise
+
+
+def _generate_audio_asset(
+    job: GenerationJob,
+) -> tuple[str, str, str, float, dict[str, object]]:
+    script = job.input.get("script")
+    voice_preset_id = job.input.get("voice_preset_id")
+    if not isinstance(script, str) or not isinstance(voice_preset_id, str):
+        raise ValueError("TTS generation requires script and voice preset")
+
+    try:
+        storage_url, duration_seconds, metadata = generate_kokoro_speech(
+            project_id=job.project_id,
+            script=script,
+            voice_preset_id=voice_preset_id,
+        )
+        return storage_url, "kokoro", "audio/wav", duration_seconds, metadata
+    except KokoroTTSUnavailable as error:
+        return (
+            _mock_asset_url(job, "voice.mp3"),
+            "mock-kokoro",
+            "audio/mpeg",
+            4.0,
+            {
+                "script": script,
+                "voice_preset_id": voice_preset_id,
+                "mode": "mock",
+                "reason": str(error),
+            },
+        )
+    except KokoroTTSFailed:
         raise

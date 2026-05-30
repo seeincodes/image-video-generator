@@ -108,7 +108,7 @@ def generate_voice(
     job = GenerationJob(
         project_id=project_id,
         job_type=JobType.tts,
-        provider="elevenlabs",
+        provider="kokoro",
         input=request.model_dump(),
     )
     queue_mock_job(job, background_tasks)

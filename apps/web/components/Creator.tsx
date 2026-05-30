@@ -61,7 +61,7 @@ export function Creator() {
 
       await generateVoice(createdProject.id, {
         script: narration,
-        voice_preset_id: "elevenlabs-default-narrator",
+        voice_preset_id: "kokoro-af-heart",
       });
       const audio = await waitForAsset(createdProject.id, "tts", "generated_audio");
 
@@ -183,7 +183,7 @@ export function Creator() {
         <ul className="status-list">
           <StatusItem job={findJob(project, "image_generation")} label="Image" provider="OpenAI Images" />
           <StatusItem job={findJob(project, "image_to_video")} label="Motion" provider="Runway" />
-          <StatusItem job={findJob(project, "tts")} label="Voice" provider="ElevenLabs" />
+          <StatusItem job={findJob(project, "tts")} label="Voice" provider="Kokoro" />
           <StatusItem job={findJob(project, "final_export")} label="Export" provider="FFmpeg" />
         </ul>
       </aside>
