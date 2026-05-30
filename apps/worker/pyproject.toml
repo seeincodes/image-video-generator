@@ -1,0 +1,23 @@
+[project]
+name = "image-video-voice-worker"
+version = "0.1.0"
+description = "Background worker skeleton for AI generation and FFmpeg export jobs."
+requires-python = ">=3.11"
+dependencies = [
+    "boto3>=1.34.0",
+    "httpx>=0.27.0",
+    "openai>=1.84.0",
+    "pydantic>=2.8.0",
+    "pydantic-settings>=2.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.6.0",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

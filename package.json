@@ -1,0 +1,12 @@
+{
+  "name": "image-video-voice-app",
+  "private": true,
+  "scripts": {
+    "dev:web": "npm --prefix apps/web run dev",
+    "build:web": "npm --prefix apps/web run build",
+    "lint:web": "npm --prefix apps/web run lint"
+  },
+  "workspaces": [
+    "apps/web"
+  ]
+}

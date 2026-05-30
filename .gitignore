@@ -1,0 +1,15 @@
+node_modules/
+.next/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+__pycache__/
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+exports/
+generated/
