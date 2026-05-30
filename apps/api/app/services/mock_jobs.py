@@ -1,7 +1,9 @@
 from datetime import datetime
+from uuid import UUID
 
 from app.models import GenerationJob, JobStatus, JobType, MediaAsset, MediaType, ProjectStatus
 from app.services.openai_images import OpenAIImageGenerationUnavailable, generate_openai_image
+from app.services.runway import RunwayGenerationUnavailable, generate_runway_video
 from app.store import store
 
 
@@ -25,19 +27,17 @@ def run_mock_job(job: GenerationJob) -> GenerationJob:
                 metadata=metadata,
             )
         case JobType.image_to_video:
+            storage_url, provider, metadata = _generate_video_asset(job)
             asset = MediaAsset(
                 project_id=job.project_id,
                 type=MediaType.generated_video,
-                provider=job.provider,
-                storage_url=_mock_asset_url(job, "video.mp4"),
+                provider=provider,
+                storage_url=storage_url,
                 mime_type="video/mp4",
                 duration_seconds=float(job.input.get("duration_seconds", 5)),
                 width=1080,
                 height=1920,
-                metadata={
-                    "motion_prompt": job.input.get("motion_prompt"),
-                    "source_image_asset_id": job.input.get("source_image_asset_id"),
-                },
+                metadata=metadata,
             )
         case JobType.tts:
             asset = MediaAsset(
@@ -101,4 +101,39 @@ def _generate_image_asset(job: GenerationJob) -> tuple[str, str, dict[str, objec
             _mock_asset_url(job, "image.svg"),
             "mock-openai",
             {"prompt": prompt, "mode": "mock", "reason": str(error)},
+        )
+
+
+def _generate_video_asset(job: GenerationJob) -> tuple[str, str, dict[str, object]]:
+    motion_prompt = job.input.get("motion_prompt")
+    source_image_asset_id = job.input.get("source_image_asset_id")
+    duration_seconds = job.input.get("duration_seconds", 5)
+    if not isinstance(motion_prompt, str) or not isinstance(source_image_asset_id, str):
+        raise ValueError("Video generation requires motion prompt and source image asset")
+    if not isinstance(duration_seconds, int):
+        raise ValueError("Video generation duration must be an integer")
+
+    source_image = store.state.media_assets.get(UUID(source_image_asset_id))
+    if source_image is None:
+        raise ValueError("Source image asset not found")
+
+    metadata = {
+        "motion_prompt": motion_prompt,
+        "source_image_asset_id": source_image_asset_id,
+        "duration_seconds": duration_seconds,
+    }
+
+    try:
+        storage_url = generate_runway_video(
+            project_id=job.project_id,
+            source_image=source_image,
+            motion_prompt=motion_prompt,
+            duration_seconds=duration_seconds,
+        )
+        return storage_url, "runway", metadata | {"mode": "live"}
+    except RunwayGenerationUnavailable as error:
+        return (
+            _mock_asset_url(job, "video.mp4"),
+            "mock-runway",
+            metadata | {"mode": "mock", "reason": str(error)},
         )
