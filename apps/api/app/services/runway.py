@@ -42,17 +42,23 @@ def generate_runway_video(
     }
 
     with httpx.Client(timeout=120) as client:
-        create_response = client.post(
-            f"{settings.runway_api_base_url}/v1/image_to_video",
-            headers=headers,
-            json=payload,
-        )
-        create_response.raise_for_status()
+        try:
+            create_response = client.post(
+                f"{settings.runway_api_base_url}/v1/image_to_video",
+                headers=headers,
+                json=payload,
+            )
+            create_response.raise_for_status()
+        except httpx.HTTPStatusError as error:
+            raise RunwayGenerationFailed(_format_runway_http_error(error)) from error
         task_id = _extract_task_id(create_response.json())
         task = _wait_for_task(client, headers, task_id)
         output_url = _extract_output_url(task)
-        video_response = client.get(output_url)
-        video_response.raise_for_status()
+        try:
+            video_response = client.get(output_url)
+            video_response.raise_for_status()
+        except httpx.HTTPStatusError as error:
+            raise RunwayGenerationFailed(_format_runway_http_error(error)) from error
 
     return save_local_asset(
         project_id=project_id,
@@ -104,3 +110,7 @@ def _extract_output_url(task: dict[str, Any]) -> str:
     if not isinstance(output, list) or not output or not isinstance(output[0], str):
         raise RunwayGenerationFailed("Runway task did not include an output URL")
     return output[0]
+
+
+def _format_runway_http_error(error: httpx.HTTPStatusError) -> str:
+    return f"Runway API returned {error.response.status_code}: {error.response.text}"
