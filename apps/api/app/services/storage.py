@@ -1,4 +1,5 @@
 import base64
+import mimetypes
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -20,3 +21,18 @@ def save_local_asset(
 
 def decode_base64_image(image_base64: str) -> bytes:
     return base64.b64decode(image_base64)
+
+
+def read_local_asset(storage_url: str, local_root: str = LOCAL_ASSET_ROOT) -> tuple[bytes, str]:
+    if not storage_url.startswith("/assets/"):
+        raise ValueError("Only local /assets URLs can be read from disk")
+
+    relative_path = storage_url.removeprefix("/assets/")
+    path = Path(local_root) / relative_path
+    content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    return path.read_bytes(), content_type
+
+
+def to_data_uri(content: bytes, content_type: str) -> str:
+    encoded = base64.b64encode(content).decode("utf-8")
+    return f"data:{content_type};base64,{encoded}"

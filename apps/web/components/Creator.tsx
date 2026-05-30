@@ -10,7 +10,9 @@ import {
   getProject,
   toAssetUrl,
 } from "@/app/api";
-import type { GenerationJob, MediaAsset, ProjectDetail } from "@/app/types";
+import type { GenerationJob, JobType, MediaAsset, MediaType, ProjectDetail } from "@/app/types";
+
+const pollIntervalMs = 2000;
 
 const defaultPrompts = {
   imagePrompt: "A cinematic close-up of a golden retriever astronaut on Mars, warm sunset light",
@@ -48,30 +50,27 @@ export function Creator() {
       });
 
       await generateImage(createdProject.id, { prompt: imagePrompt });
-      let detail = await refreshProject(createdProject.id);
-      const image = requireAsset(detail, "generated_image");
+      const image = await waitForAsset(createdProject.id, "image_generation", "generated_image");
 
       await generateVideo(createdProject.id, {
         source_image_asset_id: image.id,
         motion_prompt: motionPrompt,
         duration_seconds: 5,
       });
-      detail = await refreshProject(createdProject.id);
-      const video = requireAsset(detail, "generated_video");
+      const video = await waitForAsset(createdProject.id, "image_to_video", "generated_video", 180);
 
       await generateVoice(createdProject.id, {
         script: narration,
         voice_preset_id: "elevenlabs-default-narrator",
       });
-      detail = await refreshProject(createdProject.id);
-      const audio = requireAsset(detail, "generated_audio");
+      const audio = await waitForAsset(createdProject.id, "tts", "generated_audio");
 
       await exportProject(createdProject.id, {
         generated_video_asset_id: video.id,
         audio_asset_id: audio.id,
         captions_enabled: true,
       });
-      await refreshProject(createdProject.id);
+      await waitForAsset(createdProject.id, "final_export", "final_video");
     } catch (generationError) {
       setError(generationError instanceof Error ? generationError.message : "Generation failed");
     } finally {
@@ -83,6 +82,28 @@ export function Creator() {
     const detail = await getProject(projectId);
     setProject(detail);
     return detail;
+  }
+
+  async function waitForAsset(
+    projectId: string,
+    jobType: JobType,
+    mediaType: MediaType,
+    maxAttempts = 60,
+  ) {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const detail = await refreshProject(projectId);
+      const job = findJob(detail, jobType);
+      if (job?.status === "failed") {
+        throw new Error(job.error_message ?? `${jobType} failed`);
+      }
+      const asset = newestAsset(detail.media_assets, mediaType);
+      if (job?.status === "succeeded" && asset) {
+        return asset;
+      }
+      await delay(pollIntervalMs);
+    }
+
+    throw new Error(`Timed out waiting for ${mediaType}`);
   }
 
   return (
@@ -135,7 +156,7 @@ export function Creator() {
             onClick={handleGenerate}
             type="button"
           >
-            {isGenerating ? "Generating mock video..." : "Generate MVP video"}
+            {isGenerating ? "Generating video..." : "Generate MVP video"}
           </button>
 
           {error ? <p className="error">{error}</p> : null}
@@ -198,10 +219,8 @@ function newestAsset(assets: MediaAsset[], type: MediaAsset["type"]) {
   return assets.filter((asset) => asset.type === type).at(-1);
 }
 
-function requireAsset(project: ProjectDetail, type: MediaAsset["type"]) {
-  const asset = newestAsset(project.media_assets, type);
-  if (!asset) {
-    throw new Error(`Expected ${type} asset to exist`);
-  }
-  return asset;
+function delay(durationMs: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, durationMs);
+  });
 }

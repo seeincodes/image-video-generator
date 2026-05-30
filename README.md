@@ -60,7 +60,12 @@ python -m worker.main
 - `S3_BUCKET_NAME`
 - `DATABASE_URL`
 
-The app runs in mock mode without provider keys. OpenAI image generation is connected first: set `OPENAI_API_KEY` and optionally `OPENAI_IMAGE_MODEL` to generate a real image, store it under `.local/assets`, and display it in the web preview. Video, voice, and final export still use mock assets until Runway, ElevenLabs, and FFmpeg are connected.
+The app runs in mock mode without provider keys. OpenAI image generation and Runway image-to-video generation are connected first:
+
+- Set `OPENAI_API_KEY` and optionally `OPENAI_IMAGE_MODEL` to generate a real image.
+- Set `RUNWAYML_API_SECRET` to turn that image into a real video.
+
+Generated files are stored under `.local/assets`. Voice and final export still use mock assets until ElevenLabs and FFmpeg are connected.
 
 ## Local mock MVP demo
 
@@ -97,13 +102,29 @@ The button creates a project, runs mock image/video/voice/export jobs, persists 
 
 When `OPENAI_API_KEY` is configured, the image step calls OpenAI Images and saves a local PNG under `.local/assets/{project_id}`. If the key is missing, the app falls back to a mock `mock://.../image.svg` asset.
 
+## Runway image-to-video
+
+Set this in `apps/api/.env`:
+
+```bash
+RUNWAYML_API_SECRET=...
+RUNWAY_API_BASE_URL=https://api.dev.runwayml.com
+RUNWAY_API_VERSION=2024-11-06
+RUNWAY_VIDEO_MODEL=gen4.5
+RUNWAY_VIDEO_RATIO=1280:720
+RUNWAY_POLL_INTERVAL_SECONDS=5
+RUNWAY_POLL_ATTEMPTS=60
+```
+
+When `RUNWAYML_API_SECRET` is configured, the video step sends the generated image as a data URI to Runway, polls `/v1/tasks/{task_id}`, downloads the ephemeral output URL, and saves the MP4 under `.local/assets/{project_id}`. If the key is missing, the app falls back to a mock `mock://.../video.mp4` asset.
+
 ## First implementation tickets
 
 1. Replace local JSON store with Postgres models/migrations.
 2. Implement S3 presigned upload/download URLs.
 3. Add queue backend: SQS, Redis/BullMQ, or Celery/RQ.
 4. Move OpenAI image generation from FastAPI background tasks into the durable worker queue.
-5. Implement Runway image-to-video generation and polling.
+5. Move Runway video generation from FastAPI background tasks into the durable worker queue.
 6. Implement ElevenLabs text-to-speech.
 7. Implement FFmpeg export worker.
 8. Add upload-image path in the web editor.

@@ -2,6 +2,8 @@ from worker.models import WorkerJob
 
 
 class RunwayProvider:
+    api_path = "/v1/image_to_video"
+
     def generate_video(self, job: WorkerJob) -> None:
         motion_prompt = job.input.get("motion_prompt")
         source_image_asset_id = job.input.get("source_image_asset_id")

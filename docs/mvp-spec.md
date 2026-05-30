@@ -84,7 +84,8 @@ The current skeleton includes a local mock mode:
 - `apps/api` persists projects, jobs, and media assets to `.local/data.json`.
 - Generation routes enqueue FastAPI background tasks.
 - OpenAI image generation uses the real Images API when `OPENAI_API_KEY` is present.
-- Video, voice, and export jobs currently create `mock://...` media assets.
+- Runway image-to-video uses the real API when `RUNWAYML_API_SECRET` is present.
+- Voice and export jobs currently create `mock://...` media assets.
 - `apps/web` runs the guided flow from a single button.
 
 This proves the orchestration shape before paid provider keys are connected.
