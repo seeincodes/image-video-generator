@@ -9,7 +9,7 @@
 - Database: Postgres.
 - Image generation: OpenAI Images API.
 - Image-to-video: Runway first, Luma later.
-- TTS: ElevenLabs first, OpenAI TTS fallback later.
+- TTS: Kokoro first, with commercial APIs as optional later providers.
 - Export: FFmpeg.
 
 ## Data model

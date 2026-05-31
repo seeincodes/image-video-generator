@@ -61,7 +61,7 @@ export function Creator() {
 
       await generateVoice(createdProject.id, {
         script: narration,
-        voice_preset_id: "elevenlabs-default-narrator",
+        voice_preset_id: "kokoro-af-heart",
       });
       const audio = await waitForAsset(createdProject.id, "tts", "generated_audio");
 
@@ -165,7 +165,11 @@ export function Creator() {
 
       <aside className="card preview">
         <div className="video-frame">
-          {assetsByType.image?.storage_url.startsWith("/") ? (
+          {assetsByType.final?.storage_url.startsWith("/") ? (
+            <video className="generated-video" controls src={toAssetUrl(assetsByType.final.storage_url)} />
+          ) : assetsByType.video?.storage_url.startsWith("/") ? (
+            <video className="generated-video" controls src={toAssetUrl(assetsByType.video.storage_url)} />
+          ) : assetsByType.image?.storage_url.startsWith("/") ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img alt="Generated source" className="generated-image" src={toAssetUrl(assetsByType.image.storage_url)} />
           ) : (
@@ -179,11 +183,14 @@ export function Creator() {
             </div>
           )}
         </div>
+        {assetsByType.audio?.storage_url.startsWith("/") ? (
+          <audio className="generated-audio" controls src={toAssetUrl(assetsByType.audio.storage_url)} />
+        ) : null}
 
         <ul className="status-list">
           <StatusItem job={findJob(project, "image_generation")} label="Image" provider="OpenAI Images" />
           <StatusItem job={findJob(project, "image_to_video")} label="Motion" provider="Runway" />
-          <StatusItem job={findJob(project, "tts")} label="Voice" provider="ElevenLabs" />
+          <StatusItem job={findJob(project, "tts")} label="Voice" provider="Kokoro" />
           <StatusItem job={findJob(project, "final_export")} label="Export" provider="FFmpeg" />
         </ul>
       </aside>

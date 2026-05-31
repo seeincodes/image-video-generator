@@ -151,6 +151,17 @@ textarea {
   object-fit: contain;
 }
 
+.generated-video {
+  display: block;
+  width: 100%;
+  max-height: 560px;
+  border-radius: 18px;
+}
+
+.generated-audio {
+  width: 100%;
+}
+
 .status-list {
   display: grid;
   gap: 12px;
