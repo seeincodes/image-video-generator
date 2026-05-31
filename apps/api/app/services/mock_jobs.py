@@ -13,6 +13,7 @@ from app.services.kokoro_tts import (
 from app.services.openai_images import (
     OpenAIImageGenerationFailed,
     OpenAIImageGenerationUnavailable,
+    edit_openai_image,
     generate_openai_image,
 )
 from app.services.runway import (
@@ -125,17 +126,81 @@ def _generate_image_asset(job: GenerationJob) -> tuple[str, str, dict[str, objec
     if not isinstance(prompt, str):
         raise ValueError("Image generation requires a prompt")
 
+    reference_image_asset_id = job.input.get("reference_image_asset_id")
+    style = job.input.get("style")
+    negative_prompt = job.input.get("negative_prompt")
+    final_prompt = _build_image_prompt(
+        prompt=prompt,
+        style=style if isinstance(style, str) else None,
+        negative_prompt=negative_prompt if isinstance(negative_prompt, str) else None,
+    )
+    metadata = {
+        "prompt": prompt,
+        "final_prompt": final_prompt,
+        "style": style,
+        "negative_prompt": negative_prompt,
+    }
+    if isinstance(reference_image_asset_id, str):
+        reference_image = store.state.media_assets.get(UUID(reference_image_asset_id))
+        if reference_image is None:
+            raise ValueError("Reference image asset not found")
+
+        try:
+            storage_url = edit_openai_image(
+                project_id=job.project_id,
+                prompt=final_prompt,
+                reference_storage_url=reference_image.storage_url,
+            )
+            return (
+                storage_url,
+                "openai",
+                metadata
+                | {
+                    "mode": "live",
+                    "generation_mode": "image_edit",
+                    "reference_image_asset_id": reference_image_asset_id,
+                },
+            )
+        except OpenAIImageGenerationUnavailable as error:
+            return (
+                _mock_asset_url(job, "image.svg"),
+                "mock-openai",
+                metadata
+                | {
+                    "mode": "mock",
+                    "generation_mode": "image_edit",
+                    "reference_image_asset_id": reference_image_asset_id,
+                    "reason": str(error),
+                },
+            )
+        except OpenAIImageGenerationFailed:
+            raise
+
     try:
-        storage_url = generate_openai_image(job.project_id, prompt)
-        return storage_url, "openai", {"prompt": prompt, "mode": "live"}
+        storage_url = generate_openai_image(job.project_id, final_prompt)
+        return storage_url, "openai", metadata | {"mode": "live", "generation_mode": "text"}
     except OpenAIImageGenerationUnavailable as error:
         return (
             _mock_asset_url(job, "image.svg"),
             "mock-openai",
-            {"prompt": prompt, "mode": "mock", "reason": str(error)},
+            metadata | {"mode": "mock", "generation_mode": "text", "reason": str(error)},
         )
     except OpenAIImageGenerationFailed:
         raise
+
+
+def _build_image_prompt(
+    *,
+    prompt: str,
+    style: str | None,
+    negative_prompt: str | None,
+) -> str:
+    prompt_parts = [prompt]
+    if style:
+        prompt_parts.append(f"Style: {style}.")
+    if negative_prompt:
+        prompt_parts.append(f"Avoid: {negative_prompt}.")
+    return "\n".join(prompt_parts)
 
 
 def _generate_video_asset(job: GenerationJob) -> tuple[str, str, dict[str, object]]:

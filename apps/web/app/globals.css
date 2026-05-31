@@ -115,6 +115,11 @@ textarea {
   opacity: 0.65;
 }
 
+.button.secondary {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
 .error {
   border: 1px solid #fecaca;
   border-radius: 16px;
@@ -160,6 +165,20 @@ textarea {
 
 .generated-audio {
   width: 100%;
+}
+
+.reference-preview {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.reference-preview img {
+  width: 96px;
+  height: 96px;
+  border-radius: 16px;
+  object-fit: cover;
 }
 
 .status-list {

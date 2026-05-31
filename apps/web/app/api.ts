@@ -1,4 +1,4 @@
-import type { GenerationJob, Project, ProjectDetail } from "./types";
+import type { GenerationJob, MediaAsset, Project, ProjectDetail } from "./types";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -36,11 +36,35 @@ export function getProject(projectId: string) {
   return request<ProjectDetail>(`/projects/${projectId}`);
 }
 
-export function generateImage(projectId: string, input: { prompt: string }) {
+export function generateImage(
+  projectId: string,
+  input: {
+    prompt: string;
+    style?: string;
+    negative_prompt?: string;
+    reference_image_asset_id?: string;
+  },
+) {
   return request<GenerationJob>(`/projects/${projectId}/generate-image`, {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export async function uploadReferenceImage(projectId: string, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(`${apiBaseUrl}/projects/${projectId}/reference-image`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Reference image upload failed: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json() as Promise<{ asset: MediaAsset }>;
 }
 
 export function generateVideo(
