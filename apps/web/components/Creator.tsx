@@ -165,7 +165,11 @@ export function Creator() {
 
       <aside className="card preview">
         <div className="video-frame">
-          {assetsByType.image?.storage_url.startsWith("/") ? (
+          {assetsByType.final?.storage_url.startsWith("/") ? (
+            <video className="generated-video" controls src={toAssetUrl(assetsByType.final.storage_url)} />
+          ) : assetsByType.video?.storage_url.startsWith("/") ? (
+            <video className="generated-video" controls src={toAssetUrl(assetsByType.video.storage_url)} />
+          ) : assetsByType.image?.storage_url.startsWith("/") ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img alt="Generated source" className="generated-image" src={toAssetUrl(assetsByType.image.storage_url)} />
           ) : (
@@ -179,6 +183,9 @@ export function Creator() {
             </div>
           )}
         </div>
+        {assetsByType.audio?.storage_url.startsWith("/") ? (
+          <audio className="generated-audio" controls src={toAssetUrl(assetsByType.audio.storage_url)} />
+        ) : null}
 
         <ul className="status-list">
           <StatusItem job={findJob(project, "image_generation")} label="Image" provider="OpenAI Images" />
