@@ -1,6 +1,7 @@
 import subprocess
 import tempfile
 from datetime import datetime
+from html import escape
 from pathlib import Path
 from uuid import UUID
 
@@ -67,7 +68,7 @@ def _create_asset_for_job(job: GenerationJob) -> MediaAsset:
                 type=MediaType.generated_image,
                 provider=provider,
                 storage_url=storage_url,
-                mime_type="image/png" if provider == "openai" else "image/svg+xml",
+                mime_type=_image_mime_type(provider, metadata),
                 width=1080,
                 height=1920,
                 metadata=metadata,
@@ -162,10 +163,16 @@ def _generate_image_asset(job: GenerationJob) -> tuple[str, str, dict[str, objec
                 },
             )
         except OpenAIImageGenerationUnavailable as error:
+            storage_url, fallback_metadata = _generate_mock_image_file(
+                job.project_id,
+                final_prompt,
+                reference_image,
+            )
             return (
-                _mock_asset_url(job, "image.svg"),
+                storage_url,
                 "mock-openai",
                 metadata
+                | fallback_metadata
                 | {
                     "mode": "mock",
                     "generation_mode": "image_edit",
@@ -180,10 +187,17 @@ def _generate_image_asset(job: GenerationJob) -> tuple[str, str, dict[str, objec
         storage_url = generate_openai_image(job.project_id, final_prompt)
         return storage_url, "openai", metadata | {"mode": "live", "generation_mode": "text"}
     except OpenAIImageGenerationUnavailable as error:
+        storage_url, fallback_metadata = _generate_mock_image_file(
+            job.project_id,
+            final_prompt,
+            None,
+        )
         return (
-            _mock_asset_url(job, "image.svg"),
+            storage_url,
             "mock-openai",
-            metadata | {"mode": "mock", "generation_mode": "text", "reason": str(error)},
+            metadata
+            | fallback_metadata
+            | {"mode": "mock", "generation_mode": "text", "reason": str(error)},
         )
     except OpenAIImageGenerationFailed:
         raise
@@ -201,6 +215,79 @@ def _build_image_prompt(
     if negative_prompt:
         prompt_parts.append(f"Avoid: {negative_prompt}.")
     return "\n".join(prompt_parts)
+
+
+def _image_mime_type(provider: str, metadata: dict[str, object]) -> str:
+    mime_type = metadata.get("mime_type")
+    if isinstance(mime_type, str):
+        return mime_type
+    return "image/png" if provider == "openai" else "image/svg+xml"
+
+
+def _generate_mock_image_file(
+    project_id: UUID,
+    prompt: str,
+    reference_image: MediaAsset | None,
+) -> tuple[str, dict[str, object]]:
+    if reference_image is not None:
+        try:
+            content, content_type = read_local_asset(reference_image.storage_url)
+        except (OSError, ValueError):
+            content = b""
+            content_type = ""
+        if content and content_type in {"image/jpeg", "image/png", "image/webp"}:
+            extension = {
+                "image/jpeg": "jpg",
+                "image/png": "png",
+                "image/webp": "webp",
+            }[content_type]
+            return (
+                save_local_asset(
+                    project_id=project_id,
+                    filename=f"mock-reference-image.{extension}",
+                    content=content,
+                ),
+                {"mime_type": content_type, "mock_source": "reference_image"},
+            )
+
+    safe_prompt = escape(prompt[:180])
+    svg = "\n".join(
+        [
+            (
+                '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" '
+                'viewBox="0 0 1080 1920">'
+            ),
+            "  <defs>",
+            '    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">',
+            '      <stop offset="0%" stop-color="#1d1b4f"/>',
+            '      <stop offset="100%" stop-color="#5546ff"/>',
+            "    </linearGradient>",
+            "  </defs>",
+            '  <rect width="1080" height="1920" fill="url(#bg)"/>',
+            '  <circle cx="540" cy="620" r="240" fill="#ffffff" opacity="0.16"/>',
+            (
+                '  <text x="540" y="900" text-anchor="middle" fill="#ffffff" '
+                'font-family="Arial, sans-serif" font-size="64" font-weight="700">'
+                "Mock generated image</text>"
+            ),
+            '  <foreignObject x="120" y="980" width="840" height="360">',
+            (
+                '    <div xmlns="http://www.w3.org/1999/xhtml" style="color: white; '
+                "font: 42px Arial, sans-serif; text-align: center; line-height: 1.25;"
+                f'">{safe_prompt}</div>'
+            ),
+            "  </foreignObject>",
+            "</svg>",
+        ]
+    )
+    return (
+        save_local_asset(
+            project_id=project_id,
+            filename="mock-openai-image.svg",
+            content=svg.encode("utf-8"),
+        ),
+        {"mime_type": "image/svg+xml", "mock_source": "placeholder"},
+    )
 
 
 def _generate_video_asset(job: GenerationJob) -> tuple[str, str, dict[str, object]]:
@@ -231,41 +318,119 @@ def _generate_video_asset(job: GenerationJob) -> tuple[str, str, dict[str, objec
         )
         return storage_url, "runway", metadata | {"mode": "live"}
     except RunwayGenerationUnavailable as error:
-        storage_url = _generate_mock_video_file(job.project_id, duration_seconds)
+        storage_url, mock_video_metadata = _generate_mock_video_file(
+            job.project_id,
+            duration_seconds,
+            source_image,
+        )
         return (
             storage_url,
             "mock-runway",
-            metadata | {"mode": "mock", "reason": str(error)},
+            metadata | mock_video_metadata | {"mode": "mock", "reason": str(error)},
         )
     except RunwayGenerationFailed:
         raise
 
 
-def _generate_mock_video_file(project_id: UUID, duration_seconds: int) -> str:
+def _generate_mock_video_file(
+    project_id: UUID,
+    duration_seconds: int,
+    source_image: MediaAsset,
+) -> tuple[str, dict[str, object]]:
     with tempfile.TemporaryDirectory() as temp_dir:
-        output_path = Path(temp_dir) / "mock-video.mp4"
-        command = [
+        temp_path = Path(temp_dir)
+        output_path = temp_path / "mock-video.mp4"
+        command, mock_source = _mock_video_command(
+            source_image=source_image,
+            duration_seconds=duration_seconds,
+            output_path=output_path,
+            temp_path=temp_path,
+        )
+        result = subprocess.run(command, capture_output=True, check=False, text=True)
+        if result.returncode != 0:
+            command, mock_source = _mock_video_pattern_command(duration_seconds, output_path)
+            result = subprocess.run(command, capture_output=True, check=False, text=True)
+            if result.returncode != 0:
+                raise ValueError(f"FFmpeg mock video failed: {result.stderr[-500:]}")
+
+        return (
+            save_local_asset(
+                project_id=project_id,
+                filename="mock-runway-video.mp4",
+                content=output_path.read_bytes(),
+            ),
+            {"mock_video_source": mock_source},
+        )
+
+
+def _mock_video_command(
+    *,
+    source_image: MediaAsset,
+    duration_seconds: int,
+    output_path: Path,
+    temp_path: Path,
+) -> tuple[list[str], str]:
+    try:
+        image_content, image_type = read_local_asset(source_image.storage_url)
+    except (OSError, ValueError):
+        return _mock_video_pattern_command(duration_seconds, output_path)
+
+    if image_type not in {"image/jpeg", "image/png", "image/webp", "image/svg+xml"}:
+        return _mock_video_pattern_command(duration_seconds, output_path)
+
+    extension = {
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+        "image/svg+xml": "svg",
+    }[image_type]
+    input_path = temp_path / f"source.{extension}"
+    input_path.write_bytes(image_content)
+    return (
+        [
+            "ffmpeg",
+            "-y",
+            "-loop",
+            "1",
+            "-framerate",
+            "24",
+            "-i",
+            str(input_path),
+            "-t",
+            str(duration_seconds),
+            "-vf",
+            (
+                "scale=720:1280:force_original_aspect_ratio=decrease,"
+                "pad=720:1280:(ow-iw)/2:(oh-ih)/2:color=0x24235f,format=yuv420p"
+            ),
+            "-movflags",
+            "+faststart",
+            str(output_path),
+        ],
+        "source_image",
+    )
+
+
+def _mock_video_pattern_command(
+    duration_seconds: int,
+    output_path: Path,
+) -> tuple[list[str], str]:
+    return (
+        [
             "ffmpeg",
             "-y",
             "-f",
             "lavfi",
             "-i",
-            f"color=c=0x24235f:s=720x1280:r=24:d={duration_seconds}",
+            f"testsrc2=size=720x1280:rate=24:duration={duration_seconds}",
             "-vf",
             "format=yuv420p",
             "-movflags",
             "+faststart",
             str(output_path),
-        ]
-        result = subprocess.run(command, capture_output=True, check=False, text=True)
-        if result.returncode != 0:
-            raise ValueError(f"FFmpeg mock video failed: {result.stderr[-500:]}")
-
-        return save_local_asset(
-            project_id=project_id,
-            filename="mock-runway-video.mp4",
-            content=output_path.read_bytes(),
-        )
+        ],
+        "test_pattern",
+    )
 
 
 def _generate_audio_asset(
