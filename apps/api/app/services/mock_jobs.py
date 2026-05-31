@@ -346,10 +346,12 @@ def _generate_mock_video_file(
             output_path=output_path,
             temp_path=temp_path,
         )
-        result = subprocess.run(command, capture_output=True, check=False, text=True)
-        if result.returncode != 0:
+        result = _run_ffmpeg(command, timeout_seconds=30)
+        if result is None or result.returncode != 0:
             command, mock_source = _mock_video_pattern_command(duration_seconds, output_path)
-            result = subprocess.run(command, capture_output=True, check=False, text=True)
+            result = _run_ffmpeg(command, timeout_seconds=30)
+            if result is None:
+                raise ValueError("FFmpeg mock video failed: timed out")
             if result.returncode != 0:
                 raise ValueError(f"FFmpeg mock video failed: {result.stderr[-500:]}")
 
@@ -386,16 +388,41 @@ def _mock_video_command(
     }[image_type]
     input_path = temp_path / f"source.{extension}"
     input_path.write_bytes(image_content)
+    normalized_path = temp_path / "source-normalized.png"
+    normalize_result = _run_ffmpeg(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-y",
+            "-i",
+            str(input_path),
+            "-frames:v",
+            "1",
+            str(normalized_path),
+        ],
+        timeout_seconds=10,
+    )
+    if (
+        normalize_result is None
+        or normalize_result.returncode != 0
+        or not normalized_path.exists()
+        or normalized_path.stat().st_size == 0
+    ):
+        return _mock_video_pattern_command(duration_seconds, output_path)
+
     return (
         [
             "ffmpeg",
+            "-v",
+            "error",
             "-y",
             "-loop",
             "1",
             "-framerate",
             "24",
             "-i",
-            str(input_path),
+            str(normalized_path),
             "-t",
             str(duration_seconds),
             "-vf",
@@ -409,6 +436,23 @@ def _mock_video_command(
         ],
         "source_image",
     )
+
+
+def _run_ffmpeg(
+    command: list[str],
+    *,
+    timeout_seconds: int,
+) -> subprocess.CompletedProcess[str] | None:
+    try:
+        return subprocess.run(
+            command,
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        return None
 
 
 def _mock_video_pattern_command(
