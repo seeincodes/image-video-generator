@@ -14,7 +14,8 @@ def save_local_asset(
 ) -> str:
     asset_dir = Path(local_root) / str(project_id)
     asset_dir.mkdir(parents=True, exist_ok=True)
-    path = asset_dir / f"{uuid4()}-{filename}"
+    safe_name = Path(filename).name
+    path = asset_dir / f"{uuid4()}-{safe_name}"
     path.write_bytes(content)
     return f"/assets/{project_id}/{path.name}"
 

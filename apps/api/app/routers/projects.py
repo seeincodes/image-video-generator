@@ -1,13 +1,24 @@
+from pathlib import PurePath
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
-from app.models import GenerationJob, JobType, Project, ProjectDetail, ProjectStatus
+from app.models import (
+    GenerationJob,
+    JobType,
+    MediaAsset,
+    MediaType,
+    Project,
+    ProjectDetail,
+    ProjectStatus,
+)
 from app.services.mock_jobs import run_mock_job
+from app.services.storage import save_local_asset
 from app.store import store
 
 router = APIRouter()
+REFERENCE_IMAGE_FILE = File(...)
 
 
 class CreateProjectRequest(BaseModel):
@@ -18,6 +29,12 @@ class CreateProjectRequest(BaseModel):
 class GenerateImageRequest(BaseModel):
     prompt: str
     style: str | None = None
+    negative_prompt: str | None = None
+    reference_image_asset_id: UUID | None = None
+
+
+class UploadReferenceImageResponse(BaseModel):
+    asset: MediaAsset
 
 
 class GenerateVideoRequest(BaseModel):
@@ -75,10 +92,41 @@ def generate_image(
         project_id=project_id,
         job_type=JobType.image_generation,
         provider="openai",
-        input=request.model_dump(),
+        input=request.model_dump(mode="json"),
     )
     queue_mock_job(job, background_tasks)
     return job
+
+
+@router.post("/{project_id}/reference-image")
+async def upload_reference_image(
+    project_id: UUID,
+    file: UploadFile = REFERENCE_IMAGE_FILE,
+) -> UploadReferenceImageResponse:
+    ensure_project(project_id)
+    content_type = file.content_type or "application/octet-stream"
+    if content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(status_code=400, detail="Reference image must be JPG, PNG, or WebP")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Reference image is empty")
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Reference image must be 10MB or smaller")
+
+    filename = PurePath(file.filename or "reference-image").name
+    storage_url = save_local_asset(project_id=project_id, filename=filename, content=content)
+    asset = MediaAsset(
+        project_id=project_id,
+        type=MediaType.uploaded_image,
+        provider="local-upload",
+        storage_url=storage_url,
+        mime_type=content_type,
+        metadata={"filename": filename, "mode": "reference"},
+    )
+    store.state.media_assets[asset.id] = asset
+    store.save()
+    return UploadReferenceImageResponse(asset=asset)
 
 
 @router.post("/{project_id}/generate-video")

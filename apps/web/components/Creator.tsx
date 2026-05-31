@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   createProject,
   exportProject,
@@ -9,6 +9,7 @@ import {
   generateVoice,
   getProject,
   toAssetUrl,
+  uploadReferenceImage,
 } from "@/app/api";
 import type { GenerationJob, JobType, MediaAsset, MediaType, ProjectDetail } from "@/app/types";
 
@@ -16,15 +17,21 @@ const pollIntervalMs = 2000;
 
 const defaultPrompts = {
   imagePrompt: "A cinematic close-up of a golden retriever astronaut on Mars, warm sunset light",
+  negativePrompt: "",
   motionPrompt: "Slow camera push-in, dust drifting through the orange sky, subtle head movement",
   narration: "Some stories begin with one small step. Others begin with a very good dog.",
+  style: "Cinematic",
 };
 
 export function Creator() {
   const [imagePrompt, setImagePrompt] = useState(defaultPrompts.imagePrompt);
+  const [negativePrompt, setNegativePrompt] = useState(defaultPrompts.negativePrompt);
   const [motionPrompt, setMotionPrompt] = useState(defaultPrompts.motionPrompt);
   const [narration, setNarration] = useState(defaultPrompts.narration);
+  const [style, setStyle] = useState(defaultPrompts.style);
   const [aspectRatio, setAspectRatio] = useState("9:16");
+  const [referenceImageFile, setReferenceImageFile] = useState<File | null>(null);
+  const [referenceImagePreviewUrl, setReferenceImagePreviewUrl] = useState<string | null>(null);
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +46,14 @@ export function Creator() {
     };
   }, [project]);
 
+  useEffect(() => {
+    return () => {
+      if (referenceImagePreviewUrl) {
+        URL.revokeObjectURL(referenceImagePreviewUrl);
+      }
+    };
+  }, [referenceImagePreviewUrl]);
+
   async function handleGenerate() {
     setError(null);
     setIsGenerating(true);
@@ -49,7 +64,18 @@ export function Creator() {
         aspect_ratio: aspectRatio,
       });
 
-      await generateImage(createdProject.id, { prompt: imagePrompt });
+      setProject({ ...createdProject, media_assets: [], jobs: [] });
+
+      const referenceImage = referenceImageFile
+        ? await uploadReferenceImage(createdProject.id, referenceImageFile)
+        : null;
+
+      await generateImage(createdProject.id, {
+        prompt: imagePrompt,
+        negative_prompt: negativePrompt || undefined,
+        reference_image_asset_id: referenceImage?.asset.id,
+        style: style === "Auto" ? undefined : style,
+      });
       const image = await waitForAsset(createdProject.id, "image_generation", "generated_image");
 
       await generateVideo(createdProject.id, {
@@ -84,6 +110,14 @@ export function Creator() {
     return detail;
   }
 
+  function handleReferenceImageChange(file: File | null) {
+    setReferenceImageFile(file);
+    if (referenceImagePreviewUrl) {
+      URL.revokeObjectURL(referenceImagePreviewUrl);
+    }
+    setReferenceImagePreviewUrl(file ? URL.createObjectURL(file) : null);
+  }
+
   async function waitForAsset(
     projectId: string,
     jobType: JobType,
@@ -116,6 +150,52 @@ export function Creator() {
               name="imagePrompt"
               onChange={(event) => setImagePrompt(event.target.value)}
               value={imagePrompt}
+            />
+          </label>
+
+          <label className="field">
+            <span>Reference image</span>
+            <input
+              accept="image/png,image/jpeg,image/webp"
+              name="referenceImage"
+              onChange={(event) => handleReferenceImageChange(event.target.files?.[0] ?? null)}
+              type="file"
+            />
+          </label>
+
+          {referenceImagePreviewUrl ? (
+            <div className="reference-preview">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img alt="Reference" src={referenceImagePreviewUrl} />
+              <button
+                className="button secondary"
+                onClick={() => handleReferenceImageChange(null)}
+                type="button"
+              >
+                Clear reference
+              </button>
+            </div>
+          ) : null}
+
+          <label className="field">
+            <span>Style</span>
+            <select name="style" onChange={(event) => setStyle(event.target.value)} value={style}>
+              <option>Auto</option>
+              <option>Cinematic</option>
+              <option>Photographic</option>
+              <option>Design</option>
+              <option>Animation</option>
+              <option>Realistic</option>
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Negative prompt</span>
+            <textarea
+              name="negativePrompt"
+              onChange={(event) => setNegativePrompt(event.target.value)}
+              placeholder="Things to avoid, e.g. extra fingers, text, watermark"
+              value={negativePrompt}
             />
           </label>
 
