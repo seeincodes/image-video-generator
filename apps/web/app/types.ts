@@ -1,11 +1,12 @@
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
 
-export type JobType = "image_generation" | "image_to_video" | "tts" | "final_export";
+export type JobType = "image_generation" | "image_to_video" | "tts" | "lip_sync" | "final_export";
 
 export type MediaType =
   | "uploaded_image"
   | "generated_image"
   | "generated_video"
+  | "lip_synced_video"
   | "generated_audio"
   | "final_video";
 

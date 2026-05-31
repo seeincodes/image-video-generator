@@ -10,6 +10,7 @@
 - Image generation: OpenAI Images API.
 - Image-to-video: Runway first, Luma later.
 - TTS: Kokoro first, with commercial APIs as optional later providers.
+- Lip-sync: MuseTalk first, with local mock fallback when GPU/model setup is unavailable.
 - Export: FFmpeg.
 
 ## Data model
@@ -64,6 +65,7 @@
 - `POST /projects/{project_id}/generate-image`
 - `POST /projects/{project_id}/generate-video`
 - `POST /projects/{project_id}/generate-voice`
+- `POST /projects/{project_id}/lip-sync`
 - `POST /projects/{project_id}/export`
 - `GET /jobs/{job_id}`
 
@@ -85,7 +87,9 @@ The current skeleton includes a local mock mode:
 - Generation routes enqueue FastAPI background tasks.
 - OpenAI image generation uses the real Images API when `OPENAI_API_KEY` is present.
 - Runway image-to-video uses the real API when `RUNWAYML_API_SECRET` is present.
-- Voice and export jobs currently create `mock://...` media assets.
+- Kokoro TTS generates local WAV narration when dependencies are present.
+- MuseTalk lip-sync creates a `lip_synced_video` asset when configured, otherwise the local mock fallback copies the generated video forward.
+- FFmpeg final export muxes local video and audio assets into MP4.
 - `apps/web` runs the guided flow from a single button.
 
 This proves the orchestration shape before paid provider keys are connected.

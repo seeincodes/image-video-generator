@@ -54,6 +54,12 @@ class ExportRequest(BaseModel):
     captions_enabled: bool = True
 
 
+class LipSyncRequest(BaseModel):
+    generated_video_asset_id: UUID
+    audio_asset_id: UUID
+    bbox_shift: int = 0
+
+
 @router.post("")
 def create_project(request: CreateProjectRequest) -> Project:
     project = Project(title=request.title, aspect_ratio=request.aspect_ratio)
@@ -158,6 +164,23 @@ def generate_voice(
         job_type=JobType.tts,
         provider="kokoro",
         input=request.model_dump(),
+    )
+    queue_mock_job(job, background_tasks)
+    return job
+
+
+@router.post("/{project_id}/lip-sync")
+def lip_sync(
+    project_id: UUID,
+    request: LipSyncRequest,
+    background_tasks: BackgroundTasks,
+) -> GenerationJob:
+    ensure_project(project_id)
+    job = GenerationJob(
+        project_id=project_id,
+        job_type=JobType.lip_sync,
+        provider="musetalk",
+        input=request.model_dump(mode="json"),
     )
     queue_mock_job(job, background_tasks)
     return job

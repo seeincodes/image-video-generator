@@ -8,6 +8,7 @@ class JobType(StrEnum):
     image_generation = "image_generation"
     image_to_video = "image_to_video"
     tts = "tts"
+    lip_sync = "lip_sync"
     final_export = "final_export"
 
 

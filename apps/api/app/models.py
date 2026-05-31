@@ -24,6 +24,7 @@ class JobType(StrEnum):
     image_generation = "image_generation"
     image_to_video = "image_to_video"
     tts = "tts"
+    lip_sync = "lip_sync"
     final_export = "final_export"
 
 
@@ -31,6 +32,7 @@ class MediaType(StrEnum):
     uploaded_image = "uploaded_image"
     generated_image = "generated_image"
     generated_video = "generated_video"
+    lip_synced_video = "lip_synced_video"
     generated_audio = "generated_audio"
     final_video = "final_video"
 
