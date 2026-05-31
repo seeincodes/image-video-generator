@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   createProject,
   exportProject,
@@ -9,10 +9,11 @@ import {
   generateVoice,
   getProject,
   lipSync,
+  listProjects,
   toAssetUrl,
   uploadReferenceImage,
 } from "@/app/api";
-import type { GenerationJob, MediaAsset, MediaType, ProjectDetail } from "@/app/types";
+import type { GenerationJob, MediaAsset, MediaType, Project, ProjectDetail } from "@/app/types";
 
 const pollIntervalMs = 2000;
 
@@ -37,6 +38,8 @@ export function Creator() {
   const [referenceImageFile, setReferenceImageFile] = useState<File | null>(null);
   const [referenceImagePreviewUrl, setReferenceImagePreviewUrl] = useState<string | null>(null);
   const [project, setProject] = useState<ProjectDetail | null>(null);
+  const [recentProjects, setRecentProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [activeStage, setActiveStage] = useState<GenerationStage>(null);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +66,32 @@ export function Creator() {
     };
   }, [project, selectedImage]);
 
+  const refreshProjectHistory = useCallback(async () => {
+    const projects = await listProjects();
+    const sortedProjects = sortProjects(projects);
+    setRecentProjects(sortedProjects.slice(0, 8));
+    return sortedProjects;
+  }, []);
+
+  useEffect(() => {
+    let shouldUpdate = true;
+    listProjects()
+      .then((projects) => {
+        if (shouldUpdate) {
+          setRecentProjects(sortProjects(projects).slice(0, 8));
+        }
+      })
+      .catch(() => {
+        if (shouldUpdate) {
+          setRecentProjects([]);
+        }
+      });
+
+    return () => {
+      shouldUpdate = false;
+    };
+  }, []);
+
   useEffect(() => {
     return () => {
       if (referenceImagePreviewUrl) {
@@ -84,6 +113,7 @@ export function Creator() {
       });
 
       setProject({ ...createdProject, media_assets: [], jobs: [] });
+      setSelectedProjectId(createdProject.id);
 
       const referenceImage = referenceImageFile
         ? await uploadReferenceImage(createdProject.id, referenceImageFile)
@@ -105,6 +135,7 @@ export function Creator() {
       }
 
       setSelectedImageId(generatedImages.at(0)?.id ?? null);
+      await refreshProjectHistory();
     } catch (generationError) {
       setError(
         generationError instanceof Error ? generationError.message : "Image generation failed",
@@ -128,6 +159,7 @@ export function Creator() {
       const audio = await generateVoiceover(activeProject);
       const lipSyncedVideo = await generateLipSync(activeProject, video, audio);
       await generateFinalExport(activeProject, lipSyncedVideo, audio);
+      await refreshProjectHistory();
     } catch (generationError) {
       setError(generationError instanceof Error ? generationError.message : "Generation failed");
     } finally {
@@ -198,6 +230,7 @@ export function Creator() {
 
     try {
       await generateFinalExport(project, assetsByType.lipSyncedVideo, assetsByType.audio);
+      await refreshProjectHistory();
     } catch (generationError) {
       setError(generationError instanceof Error ? generationError.message : "Export failed");
     } finally {
@@ -254,7 +287,20 @@ export function Creator() {
   async function refreshProject(projectId: string) {
     const detail = await getProject(projectId);
     setProject(detail);
+    setSelectedProjectId(detail.id);
     return detail;
+  }
+
+  async function handleLoadProject(projectId: string) {
+    setError(null);
+    setSelectedProjectId(projectId);
+    try {
+      const detail = await refreshProject(projectId);
+      const newestImage = newestAsset(detail.media_assets, "generated_image");
+      setSelectedImageId(newestImage?.id ?? null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Project load failed");
+    }
   }
 
   function handleReferenceImageChange(file: File | null) {
@@ -475,6 +521,12 @@ export function Creator() {
         </form>
       </div>
 
+      <ProjectHistory
+        currentProjectId={project?.id ?? selectedProjectId}
+        onLoadProject={handleLoadProject}
+        projects={recentProjects}
+      />
+
       <aside className="card preview">
         <div className="video-frame">
           {assetsByType.final?.storage_url.startsWith("/") ? (
@@ -500,6 +552,11 @@ export function Creator() {
         {assetsByType.audio?.storage_url.startsWith("/") ? (
           <audio className="generated-audio" controls src={toAssetUrl(assetsByType.audio.storage_url)} />
         ) : null}
+        {assetsByType.final?.storage_url.startsWith("/") ? (
+          <a className="download-link" download href={toAssetUrl(assetsByType.final.storage_url)}>
+            Download final MP4
+          </a>
+        ) : null}
 
         <ul className="status-list">
           <StatusItem job={findJob(project, "image_generation")} label="Image" provider="OpenAI Images" />
@@ -510,6 +567,45 @@ export function Creator() {
         </ul>
       </aside>
     </section>
+  );
+}
+
+function ProjectHistory({
+  currentProjectId,
+  onLoadProject,
+  projects,
+}: {
+  currentProjectId: string;
+  onLoadProject: (projectId: string) => void;
+  projects: Project[];
+}) {
+  return (
+    <div className="card history-card">
+      <div>
+        <h2>Recent projects</h2>
+        <p>Reopen previous outputs and compare generated videos.</p>
+      </div>
+      {projects.length > 0 ? (
+        <ul className="history-list">
+          {projects.map((project) => (
+            <li key={project.id}>
+              <button
+                className={project.id === currentProjectId ? "history-item selected" : "history-item"}
+                onClick={() => onLoadProject(project.id)}
+                type="button"
+              >
+                <span>{project.title}</span>
+                <small>
+                  {project.status} · {formatDate(project.updated_at)}
+                </small>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="history-empty">Generated projects will appear here.</p>
+      )}
+    </div>
   );
 }
 
@@ -539,6 +635,19 @@ function findJob(project: ProjectDetail | null, jobType: GenerationJob["job_type
 
 function newestAsset(assets: MediaAsset[], type: MediaAsset["type"]) {
   return assets.filter((asset) => asset.type === type).at(-1);
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function sortProjects(projects: Project[]) {
+  return [...projects].sort(
+    (left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime(),
+  );
 }
 
 function delay(durationMs: number) {

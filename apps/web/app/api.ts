@@ -32,6 +32,10 @@ export function createProject(input: { title: string; aspect_ratio: string }) {
   });
 }
 
+export function listProjects() {
+  return request<Project[]>("/projects");
+}
+
 export function getProject(projectId: string) {
   return request<ProjectDetail>(`/projects/${projectId}`);
 }
