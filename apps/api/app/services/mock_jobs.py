@@ -231,13 +231,41 @@ def _generate_video_asset(job: GenerationJob) -> tuple[str, str, dict[str, objec
         )
         return storage_url, "runway", metadata | {"mode": "live"}
     except RunwayGenerationUnavailable as error:
+        storage_url = _generate_mock_video_file(job.project_id, duration_seconds)
         return (
-            _mock_asset_url(job, "video.mp4"),
+            storage_url,
             "mock-runway",
             metadata | {"mode": "mock", "reason": str(error)},
         )
     except RunwayGenerationFailed:
         raise
+
+
+def _generate_mock_video_file(project_id: UUID, duration_seconds: int) -> str:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        output_path = Path(temp_dir) / "mock-video.mp4"
+        command = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c=0x24235f:s=720x1280:r=24:d={duration_seconds}",
+            "-vf",
+            "format=yuv420p",
+            "-movflags",
+            "+faststart",
+            str(output_path),
+        ]
+        result = subprocess.run(command, capture_output=True, check=False, text=True)
+        if result.returncode != 0:
+            raise ValueError(f"FFmpeg mock video failed: {result.stderr[-500:]}")
+
+        return save_local_asset(
+            project_id=project_id,
+            filename="mock-runway-video.mp4",
+            content=output_path.read_bytes(),
+        )
 
 
 def _generate_audio_asset(
