@@ -1,5 +1,6 @@
 import base64
 import mimetypes
+import shutil
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -32,6 +33,12 @@ def read_local_asset(storage_url: str, local_root: str = LOCAL_ASSET_ROOT) -> tu
     path = Path(local_root) / relative_path
     content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
     return path.read_bytes(), content_type
+
+
+def delete_local_project_assets(project_id: UUID, local_root: str = LOCAL_ASSET_ROOT) -> None:
+    asset_dir = Path(local_root) / str(project_id)
+    if asset_dir.exists():
+        shutil.rmtree(asset_dir)
 
 
 def to_data_uri(content: bytes, content_type: str) -> str:

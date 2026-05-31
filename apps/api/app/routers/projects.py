@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.models import (
     GenerationJob,
+    JobStatus,
     JobType,
     MediaAsset,
     MediaType,
@@ -14,7 +15,7 @@ from app.models import (
     ProjectStatus,
 )
 from app.services.mock_jobs import run_mock_job
-from app.services.storage import save_local_asset
+from app.services.storage import delete_local_project_assets, save_local_asset
 from app.store import store
 
 router = APIRouter()
@@ -24,6 +25,10 @@ REFERENCE_IMAGE_FILE = File(...)
 class CreateProjectRequest(BaseModel):
     title: str
     aspect_ratio: str = "9:16"
+
+
+class UpdateProjectRequest(BaseModel):
+    title: str | None = None
 
 
 class GenerateImageRequest(BaseModel):
@@ -85,6 +90,43 @@ def get_project(project_id: UUID) -> ProjectDetail:
         ],
         jobs=[job for job in store.state.generation_jobs.values() if job.project_id == project_id],
     )
+
+
+@router.patch("/{project_id}")
+def update_project(project_id: UUID, request: UpdateProjectRequest) -> Project:
+    project = store.state.projects.get(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    title = request.title.strip() if request.title is not None else None
+    if title == "":
+        raise HTTPException(status_code=400, detail="Project title cannot be empty")
+    if title is not None:
+        project.title = title[:120]
+    store.save()
+    return project
+
+
+@router.delete("/{project_id}", status_code=204)
+def delete_project(project_id: UUID) -> None:
+    ensure_project(project_id)
+    for job in store.state.generation_jobs.values():
+        if job.project_id == project_id and job.status in {JobStatus.queued, JobStatus.running}:
+            raise HTTPException(status_code=409, detail="Project has active jobs")
+
+    store.state.projects.pop(project_id, None)
+    store.state.media_assets = {
+        asset_id: asset
+        for asset_id, asset in store.state.media_assets.items()
+        if asset.project_id != project_id
+    }
+    store.state.generation_jobs = {
+        job_id: job
+        for job_id, job in store.state.generation_jobs.items()
+        if job.project_id != project_id
+    }
+    delete_local_project_assets(project_id)
+    store.save()
 
 
 @router.post("/{project_id}/generate-image")
