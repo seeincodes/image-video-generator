@@ -120,6 +120,12 @@ textarea {
   color: #3730a3;
 }
 
+.button-row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .error {
   border: 1px solid #fecaca;
   border-radius: 16px;
@@ -181,6 +187,43 @@ textarea {
   object-fit: cover;
 }
 
+.image-options {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.image-option {
+  display: grid;
+  gap: 8px;
+  border: 2px solid #e2e8f0;
+  border-radius: 18px;
+  background: #ffffff;
+  color: #111827;
+  cursor: pointer;
+  padding: 8px;
+  text-align: left;
+}
+
+.image-option.selected {
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 4px rgb(79 70 229 / 0.16);
+}
+
+.image-option img {
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  border-radius: 12px;
+  background: #111827;
+  object-fit: cover;
+}
+
+.image-option span {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .status-list {
   display: grid;
   gap: 12px;
@@ -225,6 +268,11 @@ textarea {
 
 @media (max-width: 880px) {
   .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .button-row,
+  .image-options {
     grid-template-columns: 1fr;
   }
 }

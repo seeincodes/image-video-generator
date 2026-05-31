@@ -13,12 +13,13 @@ MVP skeleton for a creator app that turns prompts or uploaded images into short 
 ## Recommended MVP workflow
 
 1. Create project.
-2. Generate or upload image.
-3. Generate image-to-video clip with Runway.
-4. Generate narration with Kokoro.
-5. Lip-sync the video to the narration with MuseTalk.
-6. Merge video + voice with FFmpeg.
-7. Download final MP4.
+2. Generate several image options or upload a reference image.
+3. Select the best image option.
+4. Generate image-to-video clip with Runway.
+5. Generate narration with Kokoro.
+6. Lip-sync the video to the narration with MuseTalk.
+7. Merge video + voice with FFmpeg.
+8. Download final MP4.
 
 ## Local setup
 
@@ -85,9 +86,11 @@ Generated files are stored under `.local/assets`. Final export muxes the latest 
    npm run dev:web
    ```
 
-3. Open the web app and click `Generate MVP video`.
+3. Open the web app and click `Generate/regenerate image options`.
+4. Select the best generated image.
+5. Click `Generate video from selected image`.
 
-The button creates a project, runs image/video/voice/lip-sync/export jobs, persists them in `.local/data.json`, and shows the final MP4 when local assets are available.
+The first button creates a project and generates selectable image options. The second button runs video/voice/lip-sync/export jobs from the selected image, persists them in `.local/data.json`, and shows the final MP4 when local assets are available.
 
 ## OpenAI image generation
 
