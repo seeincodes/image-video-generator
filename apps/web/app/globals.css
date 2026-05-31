@@ -193,6 +193,22 @@ textarea {
   text-align: left;
 }
 
+.history-load {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.history-load:disabled {
+  cursor: wait;
+}
+
 .history-item.selected {
   border-color: #4f46e5;
   background: #eef2ff;
@@ -214,6 +230,36 @@ textarea {
   border: 1px dashed #cbd5e1;
   border-radius: 16px;
   padding: 14px;
+}
+
+.history-edit {
+  display: grid;
+  gap: 10px;
+}
+
+.history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.link-button {
+  border: 0;
+  background: transparent;
+  color: #4f46e5;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 0;
+}
+
+.link-button.danger {
+  color: #dc2626;
+}
+
+.link-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 .error {

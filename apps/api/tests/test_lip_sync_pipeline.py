@@ -13,6 +13,7 @@ from app.models import (
     Project,
     ProjectStatus,
 )
+from app.routers.projects import UpdateProjectRequest, delete_project, update_project
 from app.services import mock_jobs
 from app.services.mock_jobs import run_mock_job
 from app.services.openai_images import OpenAIImageGenerationUnavailable
@@ -194,6 +195,94 @@ def test_lip_sync_falls_back_to_local_asset_and_final_export_uses_it(tmp_path, m
     final_path = _asset_path(tmp_path, final_asset.storage_url)
     assert final_path.stat().st_size > 0
     assert _ffprobe_streams(final_path) == ["h264,video", "aac,audio"]
+
+
+def test_project_rename_trims_title_and_preserves_assets(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    store.path = tmp_path / "data.json"
+    store.state = StoreState()
+
+    project = Project(title="Original title")
+    asset = MediaAsset(
+        project_id=project.id,
+        type=MediaType.generated_image,
+        provider="mock-openai",
+        storage_url="/assets/example.png",
+        mime_type="image/png",
+    )
+    store.state.projects[project.id] = project
+    store.state.media_assets[asset.id] = asset
+
+    updated_project = update_project(
+        project.id,
+        UpdateProjectRequest(title="  New shareable title  "),
+    )
+
+    assert updated_project.title == "New shareable title"
+    assert store.state.projects[project.id].title == "New shareable title"
+    assert store.state.media_assets[asset.id] == asset
+
+
+def test_project_delete_removes_related_records_and_local_assets(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    store.path = tmp_path / "data.json"
+    store.state = StoreState()
+
+    project = Project(title="Delete me")
+    other_project = Project(title="Keep me")
+    store.state.projects[project.id] = project
+    store.state.projects[other_project.id] = other_project
+
+    storage_url = save_local_asset(
+        project_id=project.id,
+        filename="final.mp4",
+        content=b"video",
+    )
+    asset = MediaAsset(
+        project_id=project.id,
+        type=MediaType.final_video,
+        provider="ffmpeg",
+        storage_url=storage_url,
+        mime_type="video/mp4",
+    )
+    other_asset = MediaAsset(
+        project_id=other_project.id,
+        type=MediaType.final_video,
+        provider="ffmpeg",
+        storage_url="/assets/other/final.mp4",
+        mime_type="video/mp4",
+    )
+    job = GenerationJob(
+        project_id=project.id,
+        job_type=JobType.final_export,
+        provider="ffmpeg",
+        status=JobStatus.succeeded,
+        output_asset_id=asset.id,
+    )
+    other_job = GenerationJob(
+        project_id=other_project.id,
+        job_type=JobType.final_export,
+        provider="ffmpeg",
+        status=JobStatus.succeeded,
+        output_asset_id=other_asset.id,
+    )
+    store.state.media_assets[asset.id] = asset
+    store.state.media_assets[other_asset.id] = other_asset
+    store.state.generation_jobs[job.id] = job
+    store.state.generation_jobs[other_job.id] = other_job
+
+    asset_path = _asset_path(tmp_path, storage_url)
+    assert asset_path.exists()
+
+    delete_project(project.id)
+
+    assert project.id not in store.state.projects
+    assert asset.id not in store.state.media_assets
+    assert job.id not in store.state.generation_jobs
+    assert other_project.id in store.state.projects
+    assert other_asset.id in store.state.media_assets
+    assert other_job.id in store.state.generation_jobs
+    assert not asset_path.exists()
 
 
 def _source_svg() -> str:

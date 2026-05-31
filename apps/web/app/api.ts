@@ -40,6 +40,23 @@ export function getProject(projectId: string) {
   return request<ProjectDetail>(`/projects/${projectId}`);
 }
 
+export function updateProject(projectId: string, input: { title: string }) {
+  return request<Project>(`/projects/${projectId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteProject(projectId: string) {
+  const response = await fetch(`${apiBaseUrl}/projects/${projectId}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Project delete failed: ${response.status} ${response.statusText}`);
+  }
+}
+
 export function generateImage(
   projectId: string,
   input: {

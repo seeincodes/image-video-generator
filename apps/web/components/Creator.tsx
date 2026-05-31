@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   createProject,
+  deleteProject,
   exportProject,
   generateImage,
   generateVideo,
@@ -12,6 +13,7 @@ import {
   listProjects,
   toAssetUrl,
   uploadReferenceImage,
+  updateProject,
 } from "@/app/api";
 import type { GenerationJob, MediaAsset, MediaType, Project, ProjectDetail } from "@/app/types";
 
@@ -41,6 +43,8 @@ export function Creator() {
   const [recentProjects, setRecentProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [editingProjectTitle, setEditingProjectTitle] = useState("");
   const [activeStage, setActiveStage] = useState<GenerationStage>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -301,8 +305,53 @@ export function Creator() {
       const detail = await refreshProject(projectId, { restoreInputs: true });
       const newestImage = newestAsset(detail.media_assets, "generated_image");
       setSelectedImageId(newestImage?.id ?? null);
+      setEditingProjectId(null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Project load failed");
+    }
+  }
+
+  function handleStartRename(historyProject: Project) {
+    setError(null);
+    setEditingProjectId(historyProject.id);
+    setEditingProjectTitle(historyProject.title);
+  }
+
+  async function handleRenameProject(projectId: string) {
+    const title = editingProjectTitle.trim();
+    if (!title) {
+      setError("Project title cannot be empty.");
+      return;
+    }
+
+    setError(null);
+    try {
+      const renamedProject = await updateProject(projectId, { title });
+      if (project?.id === projectId) {
+        setProject({ ...project, title: renamedProject.title });
+      }
+      await refreshProjectHistory();
+      setEditingProjectId(null);
+    } catch (renameError) {
+      setError(renameError instanceof Error ? renameError.message : "Project rename failed");
+    }
+  }
+
+  async function handleDeleteProject(projectId: string) {
+    setError(null);
+    try {
+      await deleteProject(projectId);
+      if (project?.id === projectId || selectedProjectId === projectId) {
+        setProject(null);
+        setSelectedProjectId("");
+        setSelectedImageId(null);
+      }
+      await refreshProjectHistory();
+      if (editingProjectId === projectId) {
+        setEditingProjectId(null);
+      }
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Project delete failed");
     }
   }
 
@@ -545,7 +594,15 @@ export function Creator() {
 
       <ProjectHistory
         currentProjectId={project?.id ?? selectedProjectId}
+        editingProjectId={editingProjectId}
+        editingProjectTitle={editingProjectTitle}
+        isDisabled={isGenerating}
+        onCancelRename={() => setEditingProjectId(null)}
+        onDeleteProject={handleDeleteProject}
         onLoadProject={handleLoadProject}
+        onRenameProject={handleRenameProject}
+        onStartRename={handleStartRename}
+        onTitleChange={setEditingProjectTitle}
         projects={recentProjects}
       />
 
@@ -594,11 +651,27 @@ export function Creator() {
 
 function ProjectHistory({
   currentProjectId,
+  editingProjectId,
+  editingProjectTitle,
+  isDisabled,
+  onCancelRename,
+  onDeleteProject,
   onLoadProject,
+  onRenameProject,
+  onStartRename,
+  onTitleChange,
   projects,
 }: {
   currentProjectId: string;
+  editingProjectId: string | null;
+  editingProjectTitle: string;
+  isDisabled: boolean;
+  onCancelRename: () => void;
+  onDeleteProject: (projectId: string) => void;
   onLoadProject: (projectId: string) => void;
+  onRenameProject: (projectId: string) => void;
+  onStartRename: (project: Project) => void;
+  onTitleChange: (title: string) => void;
   projects: Project[];
 }) {
   return (
@@ -611,16 +684,69 @@ function ProjectHistory({
         <ul className="history-list">
           {projects.map((project) => (
             <li key={project.id}>
-              <button
-                className={project.id === currentProjectId ? "history-item selected" : "history-item"}
-                onClick={() => onLoadProject(project.id)}
-                type="button"
-              >
-                <span>{project.title}</span>
-                <small>
-                  {project.status} · {formatDate(project.updated_at)}
-                </small>
-              </button>
+              <div className={project.id === currentProjectId ? "history-item selected" : "history-item"}>
+                {editingProjectId === project.id ? (
+                  <form
+                    className="history-edit"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      onRenameProject(project.id);
+                    }}
+                  >
+                    <input
+                      aria-label="Project title"
+                      autoFocus
+                      onChange={(event) => onTitleChange(event.target.value)}
+                      value={editingProjectTitle}
+                    />
+                    <div className="history-actions">
+                      <button className="link-button" disabled={isDisabled} type="submit">
+                        Save
+                      </button>
+                      <button
+                        className="link-button"
+                        disabled={isDisabled}
+                        onClick={onCancelRename}
+                        type="button"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <button
+                      className="history-load"
+                      disabled={isDisabled}
+                      onClick={() => onLoadProject(project.id)}
+                      type="button"
+                    >
+                      <span>{project.title}</span>
+                      <small>
+                        {project.status} · {formatDate(project.updated_at)}
+                      </small>
+                    </button>
+                    <div className="history-actions">
+                      <button
+                        className="link-button"
+                        disabled={isDisabled}
+                        onClick={() => onStartRename(project)}
+                        type="button"
+                      >
+                        Rename
+                      </button>
+                      <button
+                        className="link-button danger"
+                        disabled={isDisabled}
+                        onClick={() => onDeleteProject(project.id)}
+                        type="button"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </li>
           ))}
         </ul>
