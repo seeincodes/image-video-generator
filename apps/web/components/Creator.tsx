@@ -16,6 +16,8 @@ import type { GenerationJob, MediaAsset, MediaType, ProjectDetail } from "@/app/
 
 const pollIntervalMs = 2000;
 
+type GenerationStage = "images" | "video" | "voice" | "lipSync" | "export" | null;
+
 const defaultPrompts = {
   imagePrompt: "A cinematic close-up of a golden retriever astronaut on Mars, warm sunset light",
   negativePrompt: "",
@@ -36,8 +38,10 @@ export function Creator() {
   const [referenceImagePreviewUrl, setReferenceImagePreviewUrl] = useState<string | null>(null);
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [activeStage, setActiveStage] = useState<GenerationStage>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const isGenerating = activeStage !== null;
 
   const imageOptions = useMemo(
     () => (project?.media_assets ?? []).filter((asset) => asset.type === "generated_image"),
@@ -71,7 +75,7 @@ export function Creator() {
     setError(null);
     setProject(null);
     setSelectedImageId(null);
-    setIsGenerating(true);
+    setActiveStage("images");
 
     try {
       const createdProject = await createProject({
@@ -106,7 +110,7 @@ export function Creator() {
         generationError instanceof Error ? generationError.message : "Image generation failed",
       );
     } finally {
-      setIsGenerating(false);
+      setActiveStage(null);
     }
   }
 
@@ -117,50 +121,134 @@ export function Creator() {
     }
 
     setError(null);
-    setIsGenerating(true);
 
     try {
       const activeProject = project;
-
-      const videoJob = await generateVideo(activeProject.id, {
-        source_image_asset_id: selectedImage.id,
-        motion_prompt: motionPrompt,
-        duration_seconds: 5,
-      });
-      const video = await waitForJobAsset(
-        activeProject.id,
-        videoJob.id,
-        "generated_video",
-        180,
-      );
-
-      const voiceJob = await generateVoice(activeProject.id, {
-        script: narration,
-        voice_preset_id: "kokoro-af-heart",
-      });
-      const audio = await waitForJobAsset(activeProject.id, voiceJob.id, "generated_audio");
-
-      const lipSyncJob = await lipSync(activeProject.id, {
-        generated_video_asset_id: video.id,
-        audio_asset_id: audio.id,
-      });
-      const lipSyncedVideo = await waitForJobAsset(
-        activeProject.id,
-        lipSyncJob.id,
-        "lip_synced_video",
-      );
-
-      const exportJob = await exportProject(activeProject.id, {
-        generated_video_asset_id: lipSyncedVideo.id,
-        audio_asset_id: audio.id,
-        captions_enabled: true,
-      });
-      await waitForJobAsset(activeProject.id, exportJob.id, "final_video");
+      const video = await generateVideoFromSelectedImage(activeProject, selectedImage);
+      const audio = await generateVoiceover(activeProject);
+      const lipSyncedVideo = await generateLipSync(activeProject, video, audio);
+      await generateFinalExport(activeProject, lipSyncedVideo, audio);
     } catch (generationError) {
       setError(generationError instanceof Error ? generationError.message : "Generation failed");
     } finally {
-      setIsGenerating(false);
+      setActiveStage(null);
     }
+  }
+
+  async function handleRegenerateVideo() {
+    if (!project || !selectedImage) {
+      setError("Select an image option before regenerating motion.");
+      return;
+    }
+
+    setError(null);
+
+    try {
+      await generateVideoFromSelectedImage(project, selectedImage);
+    } catch (generationError) {
+      setError(
+        generationError instanceof Error ? generationError.message : "Motion generation failed",
+      );
+    } finally {
+      setActiveStage(null);
+    }
+  }
+
+  async function handleRegenerateVoice() {
+    if (!project) {
+      setError("Generate image options before regenerating voice.");
+      return;
+    }
+
+    setError(null);
+
+    try {
+      await generateVoiceover(project);
+    } catch (generationError) {
+      setError(generationError instanceof Error ? generationError.message : "Voice generation failed");
+    } finally {
+      setActiveStage(null);
+    }
+  }
+
+  async function handleRegenerateLipSync() {
+    if (!project || !assetsByType.video || !assetsByType.audio) {
+      setError("Generate motion and voice before regenerating lip sync.");
+      return;
+    }
+
+    setError(null);
+
+    try {
+      await generateLipSync(project, assetsByType.video, assetsByType.audio);
+    } catch (generationError) {
+      setError(generationError instanceof Error ? generationError.message : "Lip sync failed");
+    } finally {
+      setActiveStage(null);
+    }
+  }
+
+  async function handleRegenerateExport() {
+    if (!project || !assetsByType.lipSyncedVideo || !assetsByType.audio) {
+      setError("Generate lip sync and voice before regenerating export.");
+      return;
+    }
+
+    setError(null);
+
+    try {
+      await generateFinalExport(project, assetsByType.lipSyncedVideo, assetsByType.audio);
+    } catch (generationError) {
+      setError(generationError instanceof Error ? generationError.message : "Export failed");
+    } finally {
+      setActiveStage(null);
+    }
+  }
+
+  async function generateVideoFromSelectedImage(activeProject: ProjectDetail, image: MediaAsset) {
+    setActiveStage("video");
+    const videoJob = await generateVideo(activeProject.id, {
+      source_image_asset_id: image.id,
+      motion_prompt: motionPrompt,
+      duration_seconds: 5,
+    });
+    return waitForJobAsset(activeProject.id, videoJob.id, "generated_video", 180);
+  }
+
+  async function generateVoiceover(activeProject: ProjectDetail) {
+    setActiveStage("voice");
+    const voiceJob = await generateVoice(activeProject.id, {
+      script: narration,
+      voice_preset_id: "kokoro-af-heart",
+    });
+    return waitForJobAsset(activeProject.id, voiceJob.id, "generated_audio");
+  }
+
+  async function generateLipSync(
+    activeProject: ProjectDetail,
+    video: MediaAsset,
+    audio: MediaAsset,
+  ) {
+    setActiveStage("lipSync");
+    const lipSyncJob = await lipSync(activeProject.id, {
+      generated_video_asset_id: video.id,
+      audio_asset_id: audio.id,
+    });
+    return waitForJobAsset(activeProject.id, lipSyncJob.id, "lip_synced_video");
+  }
+
+  async function generateFinalExport(
+    activeProject: ProjectDetail,
+    lipSyncedVideo: MediaAsset,
+    audio: MediaAsset,
+  ) {
+    setActiveStage("export");
+    const exportJob = await exportProject(activeProject.id, {
+      generated_video_asset_id: lipSyncedVideo.id,
+      audio_asset_id: audio.id,
+      captions_enabled: true,
+    });
+    return waitForJobAsset(activeProject.id, exportJob.id, "final_video");
   }
 
   async function refreshProject(projectId: string) {
@@ -310,7 +398,7 @@ export function Creator() {
               onClick={handleGenerateImageOptions}
               type="button"
             >
-              {isGenerating ? "Generating..." : "Generate/regenerate image options"}
+              {activeStage === "images" ? "Generating images..." : "Generate/regenerate image options"}
             </button>
 
             <button
@@ -319,8 +407,51 @@ export function Creator() {
               onClick={handleGenerateVideo}
               type="button"
             >
-              Generate video from selected image
+              {isGenerating && activeStage !== "images"
+                ? "Generating pipeline..."
+                : "Generate video from selected image"}
             </button>
+          </div>
+
+          <div className="regen-panel">
+            <div>
+              <strong>Regenerate one step</strong>
+              <p>Keep earlier assets and rerun only the stage you want to improve.</p>
+            </div>
+            <div className="regen-actions">
+              <button
+                className="button secondary"
+                disabled={isGenerating || !selectedImage}
+                onClick={handleRegenerateVideo}
+                type="button"
+              >
+                {activeStage === "video" ? "Regenerating motion..." : "Regenerate motion only"}
+              </button>
+              <button
+                className="button secondary"
+                disabled={isGenerating || !project}
+                onClick={handleRegenerateVoice}
+                type="button"
+              >
+                {activeStage === "voice" ? "Regenerating voice..." : "Regenerate voice only"}
+              </button>
+              <button
+                className="button secondary"
+                disabled={isGenerating || !assetsByType.video || !assetsByType.audio}
+                onClick={handleRegenerateLipSync}
+                type="button"
+              >
+                {activeStage === "lipSync" ? "Regenerating lip sync..." : "Regenerate lip sync only"}
+              </button>
+              <button
+                className="button secondary"
+                disabled={isGenerating || !assetsByType.lipSyncedVideo || !assetsByType.audio}
+                onClick={handleRegenerateExport}
+                type="button"
+              >
+                {activeStage === "export" ? "Regenerating export..." : "Regenerate export only"}
+              </button>
+            </div>
           </div>
 
           {imageOptions.length > 0 ? (
