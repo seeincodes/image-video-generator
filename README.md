@@ -89,8 +89,9 @@ Generated files are stored under `.local/assets`. Final export muxes the latest 
 3. Open the web app and click `Generate/regenerate image options`.
 4. Select the best generated image.
 5. Click `Generate video from selected image`.
+6. To iterate without restarting the full workflow, use `Regenerate motion only`, `Regenerate voice only`, `Regenerate lip sync only`, or `Regenerate export only`.
 
-The first button creates a project and generates selectable image options. The second button runs video/voice/lip-sync/export jobs from the selected image, persists them in `.local/data.json`, and shows the final MP4 when local assets are available.
+The first button creates a project and generates selectable image options. The second button runs video/voice/lip-sync/export jobs from the selected image, persists them in `.local/data.json`, and shows the final MP4 when local assets are available. The regenerate controls create a new job only for the selected stage, keeping earlier assets so you can tune motion, narration, lip-sync, or export without spending image generation again.
 
 ## OpenAI image generation
 
