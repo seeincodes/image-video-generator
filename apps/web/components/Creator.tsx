@@ -29,6 +29,67 @@ const defaultPrompts = {
   style: "Cinematic",
 };
 
+type CreatorTemplate = {
+  id: string;
+  title: string;
+  description: string;
+  imagePrompt: string;
+  negativePrompt: string;
+  motionPrompt: string;
+  narration: string;
+  style: string;
+  aspectRatio: string;
+  imageOptionCount: number;
+};
+
+const creatorTemplates: CreatorTemplate[] = [
+  {
+    id: "product-demo",
+    title: "Product demo",
+    description: "Vertical ad with a clear hero product, soft motion, and punchy narration.",
+    imagePrompt:
+      "A polished vertical product demo shot of a sleek reusable water bottle on a marble counter, morning sunlight, premium lifestyle ad",
+    negativePrompt: "watermark, logo text, cluttered background, distorted product",
+    motionPrompt:
+      "Slow push-in on the product, gentle sunlight movement, stable camera, premium commercial feel",
+    narration:
+      "Meet the bottle that keeps up with your day. Clean design, cold drinks, and zero single-use plastic.",
+    style: "Photographic",
+    aspectRatio: "9:16",
+    imageOptionCount: 3,
+  },
+  {
+    id: "character-intro",
+    title: "Character intro",
+    description: "Talking-character setup tuned for lip sync and subtle facial motion.",
+    imagePrompt:
+      "A friendly animated host character in a cozy studio, medium close-up, clear face, warm lighting, expressive eyes",
+    negativePrompt: "covered mouth, side profile, extra fingers, text, watermark",
+    motionPrompt:
+      "Natural blinking, subtle head movement, slight breathing, character speaking calmly, stable camera",
+    narration:
+      "Hi, I’m your guide for today. In just a few seconds, I’ll show you how this idea comes to life.",
+    style: "Animation",
+    aspectRatio: "9:16",
+    imageOptionCount: 4,
+  },
+  {
+    id: "explainer",
+    title: "Explainer",
+    description: "Clean educational visual for quick tutorials, concepts, or product walkthroughs.",
+    imagePrompt:
+      "A clean 3D explainer scene showing connected app screens, floating icons, and a simple workflow diagram, bright minimal background",
+    negativePrompt: "tiny unreadable text, watermark, messy layout, dark background",
+    motionPrompt:
+      "Smooth camera pan across the workflow, icons drifting gently, clear readable composition",
+    narration:
+      "Here’s the simple version. Start with your idea, choose the best visual, then turn it into a short video with narration.",
+    style: "Design",
+    aspectRatio: "16:9",
+    imageOptionCount: 3,
+  },
+];
+
 export function Creator() {
   const [imagePrompt, setImagePrompt] = useState(defaultPrompts.imagePrompt);
   const [negativePrompt, setNegativePrompt] = useState(defaultPrompts.negativePrompt);
@@ -37,6 +98,7 @@ export function Creator() {
   const [style, setStyle] = useState(defaultPrompts.style);
   const [aspectRatio, setAspectRatio] = useState("9:16");
   const [imageOptionCount, setImageOptionCount] = useState(3);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [referenceImageFile, setReferenceImageFile] = useState<File | null>(null);
   const [referenceImagePreviewUrl, setReferenceImagePreviewUrl] = useState<string | null>(null);
   const [project, setProject] = useState<ProjectDetail | null>(null);
@@ -147,6 +209,17 @@ export function Creator() {
     } finally {
       setActiveStage(null);
     }
+  }
+
+  function handleApplyTemplate(template: CreatorTemplate) {
+    setSelectedTemplateId(template.id);
+    setImagePrompt(template.imagePrompt);
+    setNegativePrompt(template.negativePrompt);
+    setMotionPrompt(template.motionPrompt);
+    setNarration(template.narration);
+    setStyle(template.style);
+    setAspectRatio(template.aspectRatio);
+    setImageOptionCount(template.imageOptionCount);
   }
 
   async function handleGenerateVideo() {
@@ -375,6 +448,7 @@ export function Creator() {
     setNarration(readStringInput(voiceJob, "script") ?? defaultPrompts.narration);
     setAspectRatio(detail.aspect_ratio);
     setImageOptionCount(Math.max(1, imageOptionsForProject(detail).length || 1));
+    setSelectedTemplateId(null);
     setReferenceImageFile(null);
     if (referenceImagePreviewUrl) {
       URL.revokeObjectURL(referenceImagePreviewUrl);
@@ -408,6 +482,29 @@ export function Creator() {
     <section className="grid">
       <div className="card">
         <form className="form">
+          <div className="template-panel">
+            <div>
+              <span>Prompt templates</span>
+              <p>Start from a proven setup, then edit any field before generating.</p>
+            </div>
+            <div className="template-grid">
+              {creatorTemplates.map((template) => (
+                <button
+                  className={`template-card ${
+                    template.id === selectedTemplateId ? "selected" : ""
+                  }`}
+                  disabled={isGenerating}
+                  key={template.id}
+                  onClick={() => handleApplyTemplate(template)}
+                  type="button"
+                >
+                  <strong>{template.title}</strong>
+                  <small>{template.description}</small>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <label className="field">
             <span>Image prompt</span>
             <textarea

@@ -74,6 +74,68 @@ h1 {
   gap: 18px;
 }
 
+.template-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 22px;
+  background: #f8fafc;
+  padding: 16px;
+}
+
+.template-panel span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.template-panel p {
+  margin: 0;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.template-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.template-card {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  background: #ffffff;
+  color: #111827;
+  cursor: pointer;
+  padding: 12px;
+  text-align: left;
+}
+
+.template-card.selected {
+  border-color: #4f46e5;
+  background: #eef2ff;
+  box-shadow: 0 0 0 4px rgb(79 70 229 / 0.12);
+}
+
+.template-card strong {
+  font-size: 14px;
+}
+
+.template-card small {
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.template-card:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .field {
   display: grid;
   gap: 8px;
@@ -419,6 +481,7 @@ textarea {
   }
 
   .button-row,
+  .template-grid,
   .image-options {
     grid-template-columns: 1fr;
   }
