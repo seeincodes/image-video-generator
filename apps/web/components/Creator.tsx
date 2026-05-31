@@ -47,7 +47,7 @@ export function Creator() {
   const isGenerating = activeStage !== null;
 
   const imageOptions = useMemo(
-    () => (project?.media_assets ?? []).filter((asset) => asset.type === "generated_image"),
+    () => (project ? imageOptionsForProject(project) : []),
     [project],
   );
   const selectedImage = useMemo(
@@ -284,8 +284,11 @@ export function Creator() {
     return waitForJobAsset(activeProject.id, exportJob.id, "final_video");
   }
 
-  async function refreshProject(projectId: string) {
+  async function refreshProject(projectId: string, options?: { restoreInputs?: boolean }) {
     const detail = await getProject(projectId);
+    if (options?.restoreInputs) {
+      restoreProjectInputs(detail);
+    }
     setProject(detail);
     setSelectedProjectId(detail.id);
     return detail;
@@ -295,7 +298,7 @@ export function Creator() {
     setError(null);
     setSelectedProjectId(projectId);
     try {
-      const detail = await refreshProject(projectId);
+      const detail = await refreshProject(projectId, { restoreInputs: true });
       const newestImage = newestAsset(detail.media_assets, "generated_image");
       setSelectedImageId(newestImage?.id ?? null);
     } catch (loadError) {
@@ -309,6 +312,25 @@ export function Creator() {
       URL.revokeObjectURL(referenceImagePreviewUrl);
     }
     setReferenceImagePreviewUrl(file ? URL.createObjectURL(file) : null);
+  }
+
+  function restoreProjectInputs(detail: ProjectDetail) {
+    const imageJob = findJob(detail, "image_generation");
+    const videoJob = findJob(detail, "image_to_video");
+    const voiceJob = findJob(detail, "tts");
+
+    setImagePrompt(readStringInput(imageJob, "prompt") ?? detail.title);
+    setNegativePrompt(readStringInput(imageJob, "negative_prompt") ?? defaultPrompts.negativePrompt);
+    setStyle(readStringInput(imageJob, "style") ?? defaultPrompts.style);
+    setMotionPrompt(readStringInput(videoJob, "motion_prompt") ?? defaultPrompts.motionPrompt);
+    setNarration(readStringInput(voiceJob, "script") ?? defaultPrompts.narration);
+    setAspectRatio(detail.aspect_ratio);
+    setImageOptionCount(Math.max(1, imageOptionsForProject(detail).length || 1));
+    setReferenceImageFile(null);
+    if (referenceImagePreviewUrl) {
+      URL.revokeObjectURL(referenceImagePreviewUrl);
+      setReferenceImagePreviewUrl(null);
+    }
   }
 
   async function waitForJobAsset(
@@ -631,6 +653,15 @@ function StatusItem({
 
 function findJob(project: ProjectDetail | null, jobType: GenerationJob["job_type"]) {
   return project?.jobs.filter((job) => job.job_type === jobType).at(-1);
+}
+
+function imageOptionsForProject(project: ProjectDetail) {
+  return project.media_assets.filter((asset) => asset.type === "generated_image");
+}
+
+function readStringInput(job: GenerationJob | undefined, key: string) {
+  const value = job?.input[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function newestAsset(assets: MediaAsset[], type: MediaAsset["type"]) {
