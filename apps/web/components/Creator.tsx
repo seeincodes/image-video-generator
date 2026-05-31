@@ -12,7 +12,7 @@ import {
   toAssetUrl,
   uploadReferenceImage,
 } from "@/app/api";
-import type { GenerationJob, JobType, MediaAsset, MediaType, ProjectDetail } from "@/app/types";
+import type { GenerationJob, MediaAsset, MediaType, ProjectDetail } from "@/app/types";
 
 const pollIntervalMs = 2000;
 
@@ -31,22 +31,33 @@ export function Creator() {
   const [narration, setNarration] = useState(defaultPrompts.narration);
   const [style, setStyle] = useState(defaultPrompts.style);
   const [aspectRatio, setAspectRatio] = useState("9:16");
+  const [imageOptionCount, setImageOptionCount] = useState(3);
   const [referenceImageFile, setReferenceImageFile] = useState<File | null>(null);
   const [referenceImagePreviewUrl, setReferenceImagePreviewUrl] = useState<string | null>(null);
   const [project, setProject] = useState<ProjectDetail | null>(null);
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const imageOptions = useMemo(
+    () => (project?.media_assets ?? []).filter((asset) => asset.type === "generated_image"),
+    [project],
+  );
+  const selectedImage = useMemo(
+    () => imageOptions.find((asset) => asset.id === selectedImageId) ?? null,
+    [imageOptions, selectedImageId],
+  );
 
   const assetsByType = useMemo(() => {
     const assets = project?.media_assets ?? [];
     return {
-      image: newestAsset(assets, "generated_image"),
+      image: selectedImage ?? newestAsset(assets, "generated_image"),
       video: newestAsset(assets, "generated_video"),
       lipSyncedVideo: newestAsset(assets, "lip_synced_video"),
       audio: newestAsset(assets, "generated_audio"),
       final: newestAsset(assets, "final_video"),
     };
-  }, [project]);
+  }, [project, selectedImage]);
 
   useEffect(() => {
     return () => {
@@ -56,8 +67,10 @@ export function Creator() {
     };
   }, [referenceImagePreviewUrl]);
 
-  async function handleGenerate() {
+  async function handleGenerateImageOptions() {
     setError(null);
+    setProject(null);
+    setSelectedImageId(null);
     setIsGenerating(true);
 
     try {
@@ -72,43 +85,77 @@ export function Creator() {
         ? await uploadReferenceImage(createdProject.id, referenceImageFile)
         : null;
 
-      await generateImage(createdProject.id, {
-        prompt: imagePrompt,
-        negative_prompt: negativePrompt || undefined,
-        reference_image_asset_id: referenceImage?.asset.id,
-        style: style === "Auto" ? undefined : style,
-      });
-      const image = await waitForAsset(createdProject.id, "image_generation", "generated_image");
+      const generatedImages: MediaAsset[] = [];
+      for (let index = 0; index < imageOptionCount; index += 1) {
+        const job = await generateImage(createdProject.id, {
+          prompt: imagePrompt,
+          negative_prompt: negativePrompt || undefined,
+          reference_image_asset_id: referenceImage?.asset.id,
+          style: style === "Auto" ? undefined : style,
+        });
+        const image = await waitForJobAsset(createdProject.id, job.id, "generated_image");
+        generatedImages.push(image);
+        if (index === 0) {
+          setSelectedImageId(image.id);
+        }
+      }
 
-      await generateVideo(createdProject.id, {
-        source_image_asset_id: image.id,
+      setSelectedImageId(generatedImages.at(0)?.id ?? null);
+    } catch (generationError) {
+      setError(
+        generationError instanceof Error ? generationError.message : "Image generation failed",
+      );
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  async function handleGenerateVideo() {
+    if (!project || !selectedImage) {
+      setError("Select an image option before generating video.");
+      return;
+    }
+
+    setError(null);
+    setIsGenerating(true);
+
+    try {
+      const activeProject = project;
+
+      const videoJob = await generateVideo(activeProject.id, {
+        source_image_asset_id: selectedImage.id,
         motion_prompt: motionPrompt,
         duration_seconds: 5,
       });
-      const video = await waitForAsset(createdProject.id, "image_to_video", "generated_video", 180);
+      const video = await waitForJobAsset(
+        activeProject.id,
+        videoJob.id,
+        "generated_video",
+        180,
+      );
 
-      await generateVoice(createdProject.id, {
+      const voiceJob = await generateVoice(activeProject.id, {
         script: narration,
         voice_preset_id: "kokoro-af-heart",
       });
-      const audio = await waitForAsset(createdProject.id, "tts", "generated_audio");
+      const audio = await waitForJobAsset(activeProject.id, voiceJob.id, "generated_audio");
 
-      await lipSync(createdProject.id, {
+      const lipSyncJob = await lipSync(activeProject.id, {
         generated_video_asset_id: video.id,
         audio_asset_id: audio.id,
       });
-      const lipSyncedVideo = await waitForAsset(
-        createdProject.id,
-        "lip_sync",
+      const lipSyncedVideo = await waitForJobAsset(
+        activeProject.id,
+        lipSyncJob.id,
         "lip_synced_video",
       );
 
-      await exportProject(createdProject.id, {
+      const exportJob = await exportProject(activeProject.id, {
         generated_video_asset_id: lipSyncedVideo.id,
         audio_asset_id: audio.id,
         captions_enabled: true,
       });
-      await waitForAsset(createdProject.id, "final_export", "final_video");
+      await waitForJobAsset(activeProject.id, exportJob.id, "final_video");
     } catch (generationError) {
       setError(generationError instanceof Error ? generationError.message : "Generation failed");
     } finally {
@@ -130,20 +177,20 @@ export function Creator() {
     setReferenceImagePreviewUrl(file ? URL.createObjectURL(file) : null);
   }
 
-  async function waitForAsset(
+  async function waitForJobAsset(
     projectId: string,
-    jobType: JobType,
+    jobId: string,
     mediaType: MediaType,
     maxAttempts = 60,
   ) {
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const detail = await refreshProject(projectId);
-      const job = findJob(detail, jobType);
+      const job = detail.jobs.find((candidate) => candidate.id === jobId);
       if (job?.status === "failed") {
-        throw new Error(job.error_message ?? `${jobType} failed`);
+        throw new Error(job.error_message ?? `${job.job_type} failed`);
       }
-      const asset = newestAsset(detail.media_assets, mediaType);
-      if (job?.status === "succeeded" && asset) {
+      const asset = detail.media_assets.find((candidate) => candidate.id === job?.output_asset_id);
+      if (job?.status === "succeeded" && asset?.type === mediaType) {
         return asset;
       }
       await delay(pollIntervalMs);
@@ -242,14 +289,56 @@ export function Creator() {
             </select>
           </label>
 
-          <button
-            className="button"
-            disabled={isGenerating}
-            onClick={handleGenerate}
-            type="button"
-          >
-            {isGenerating ? "Generating video..." : "Generate MVP video"}
-          </button>
+          <label className="field">
+            <span>Image options</span>
+            <select
+              name="imageOptionCount"
+              onChange={(event) => setImageOptionCount(Number(event.target.value))}
+              value={imageOptionCount}
+            >
+              <option value={1}>1 option</option>
+              <option value={2}>2 options</option>
+              <option value={3}>3 options</option>
+              <option value={4}>4 options</option>
+            </select>
+          </label>
+
+          <div className="button-row">
+            <button
+              className="button"
+              disabled={isGenerating}
+              onClick={handleGenerateImageOptions}
+              type="button"
+            >
+              {isGenerating ? "Generating..." : "Generate/regenerate image options"}
+            </button>
+
+            <button
+              className="button secondary"
+              disabled={isGenerating || !selectedImage}
+              onClick={handleGenerateVideo}
+              type="button"
+            >
+              Generate video from selected image
+            </button>
+          </div>
+
+          {imageOptions.length > 0 ? (
+            <div className="image-options">
+              {imageOptions.map((image, index) => (
+                <button
+                  className={`image-option ${image.id === selectedImageId ? "selected" : ""}`}
+                  key={image.id}
+                  onClick={() => setSelectedImageId(image.id)}
+                  type="button"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img alt={`Generated option ${index + 1}`} src={toAssetUrl(image.storage_url)} />
+                  <span>{image.id === selectedImageId ? "Selected" : `Option ${index + 1}`}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           {error ? <p className="error">{error}</p> : null}
         </form>
@@ -314,7 +403,7 @@ function StatusItem({
 }
 
 function findJob(project: ProjectDetail | null, jobType: GenerationJob["job_type"]) {
-  return project?.jobs.find((job) => job.job_type === jobType);
+  return project?.jobs.filter((job) => job.job_type === jobType).at(-1);
 }
 
 function newestAsset(assets: MediaAsset[], type: MediaAsset["type"]) {

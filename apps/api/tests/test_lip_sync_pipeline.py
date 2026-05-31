@@ -15,9 +15,73 @@ from app.models import (
 )
 from app.services import mock_jobs
 from app.services.mock_jobs import run_mock_job
+from app.services.openai_images import OpenAIImageGenerationUnavailable
 from app.services.runway import RunwayGenerationUnavailable
 from app.services.storage import save_local_asset
 from app.store import StoreState, store
+
+
+def test_video_generation_uses_selected_image_option(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        mock_jobs,
+        "generate_openai_image",
+        _raise_openai_unavailable,
+    )
+    monkeypatch.setattr(
+        mock_jobs,
+        "generate_runway_video",
+        _raise_runway_unavailable,
+    )
+    store.path = tmp_path / "data.json"
+    store.state = StoreState()
+
+    project = Project(title="Selected image option")
+    store.state.projects[project.id] = project
+
+    image_assets = []
+    for index in range(2):
+        image_job = GenerationJob(
+            project_id=project.id,
+            job_type=JobType.image_generation,
+            provider="openai",
+            input={
+                "prompt": "A cinematic robot host",
+                "style": "Cinematic",
+                "negative_prompt": "watermark",
+                "option_index": index,
+            },
+        )
+        store.state.generation_jobs[image_job.id] = image_job
+        run_mock_job(image_job)
+
+        assert image_job.status == JobStatus.succeeded
+        image_assets.append(store.state.media_assets[image_job.output_asset_id])
+
+    selected_image = image_assets[1]
+    video_job = GenerationJob(
+        project_id=project.id,
+        job_type=JobType.image_to_video,
+        provider="runway",
+        input={
+            "source_image_asset_id": str(selected_image.id),
+            "motion_prompt": "subtle speaking movement",
+            "duration_seconds": 1,
+        },
+    )
+    store.state.generation_jobs[video_job.id] = video_job
+    run_mock_job(video_job)
+
+    video_asset = store.state.media_assets[video_job.output_asset_id]
+
+    assert len(image_assets) == 2
+    assert image_assets[0].id != image_assets[1].id
+    assert video_job.status == JobStatus.succeeded
+    assert video_job.input["source_image_asset_id"] == str(selected_image.id)
+    assert video_asset.type == MediaType.generated_video
+    assert video_asset.provider == "mock-runway"
+    assert video_asset.metadata["source_image_asset_id"] == str(selected_image.id)
+    assert video_asset.storage_url.startswith("/assets/")
 
 
 def test_lip_sync_falls_back_to_local_asset_and_final_export_uses_it(tmp_path, monkeypatch):
@@ -140,6 +204,10 @@ def _source_svg() -> str:
         '<rect x="260" y="560" width="200" height="40" rx="20" fill="#7c1d2f"/>'
         "</svg>"
     )
+
+
+def _raise_openai_unavailable(*args, **kwargs) -> str:
+    raise OpenAIImageGenerationUnavailable("OpenAI disabled for regression test")
 
 
 def _raise_runway_unavailable(*args, **kwargs) -> str:
