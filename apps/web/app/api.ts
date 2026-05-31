@@ -87,6 +87,16 @@ export function generateVoice(
   });
 }
 
+export function lipSync(
+  projectId: string,
+  input: { generated_video_asset_id: string; audio_asset_id: string; bbox_shift?: number },
+) {
+  return request<GenerationJob>(`/projects/${projectId}/lip-sync`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export function exportProject(
   projectId: string,
   input: { generated_video_asset_id: string; audio_asset_id: string; captions_enabled: boolean },

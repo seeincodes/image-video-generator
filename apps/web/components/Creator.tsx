@@ -8,6 +8,7 @@ import {
   generateVideo,
   generateVoice,
   getProject,
+  lipSync,
   toAssetUrl,
   uploadReferenceImage,
 } from "@/app/api";
@@ -41,6 +42,7 @@ export function Creator() {
     return {
       image: newestAsset(assets, "generated_image"),
       video: newestAsset(assets, "generated_video"),
+      lipSyncedVideo: newestAsset(assets, "lip_synced_video"),
       audio: newestAsset(assets, "generated_audio"),
       final: newestAsset(assets, "final_video"),
     };
@@ -91,8 +93,18 @@ export function Creator() {
       });
       const audio = await waitForAsset(createdProject.id, "tts", "generated_audio");
 
-      await exportProject(createdProject.id, {
+      await lipSync(createdProject.id, {
         generated_video_asset_id: video.id,
+        audio_asset_id: audio.id,
+      });
+      const lipSyncedVideo = await waitForAsset(
+        createdProject.id,
+        "lip_sync",
+        "lip_synced_video",
+      );
+
+      await exportProject(createdProject.id, {
+        generated_video_asset_id: lipSyncedVideo.id,
         audio_asset_id: audio.id,
         captions_enabled: true,
       });
@@ -247,6 +259,8 @@ export function Creator() {
         <div className="video-frame">
           {assetsByType.final?.storage_url.startsWith("/") ? (
             <video className="generated-video" controls src={toAssetUrl(assetsByType.final.storage_url)} />
+          ) : assetsByType.lipSyncedVideo?.storage_url.startsWith("/") ? (
+            <video className="generated-video" controls src={toAssetUrl(assetsByType.lipSyncedVideo.storage_url)} />
           ) : assetsByType.video?.storage_url.startsWith("/") ? (
             <video className="generated-video" controls src={toAssetUrl(assetsByType.video.storage_url)} />
           ) : assetsByType.image?.storage_url.startsWith("/") ? (
@@ -271,6 +285,7 @@ export function Creator() {
           <StatusItem job={findJob(project, "image_generation")} label="Image" provider="OpenAI Images" />
           <StatusItem job={findJob(project, "image_to_video")} label="Motion" provider="Runway" />
           <StatusItem job={findJob(project, "tts")} label="Voice" provider="Kokoro" />
+          <StatusItem job={findJob(project, "lip_sync")} label="Lip sync" provider="MuseTalk" />
           <StatusItem job={findJob(project, "final_export")} label="Export" provider="FFmpeg" />
         </ul>
       </aside>

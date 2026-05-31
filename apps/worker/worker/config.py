@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     runway_video_model: str = "gen4.5"
     runway_video_ratio: str = "1280:720"
     elevenlabs_api_key: str | None = None
+    musetalk_enabled: bool = False
+    musetalk_repo_path: str | None = None
+    musetalk_model_dir: str | None = None
     s3_bucket_name: str = "image-video-voice-dev"
     aws_region: str = "us-east-1"
 

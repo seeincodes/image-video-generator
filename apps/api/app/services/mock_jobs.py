@@ -11,6 +11,12 @@ from app.services.kokoro_tts import (
     KokoroTTSUnavailable,
     generate_kokoro_speech,
 )
+from app.services.musetalk_lipsync import (
+    MuseTalkLipSyncFailed,
+    MuseTalkLipSyncUnavailable,
+    copy_video_as_mock_lip_sync,
+    generate_musetalk_lip_sync,
+)
 from app.services.openai_images import (
     OpenAIImageGenerationFailed,
     OpenAIImageGenerationUnavailable,
@@ -101,6 +107,19 @@ def _create_asset_for_job(job: GenerationJob) -> MediaAsset:
                 storage_url=storage_url,
                 mime_type=mime_type,
                 duration_seconds=duration_seconds,
+                metadata=metadata,
+            )
+        case JobType.lip_sync:
+            storage_url, provider, duration_seconds, metadata = _generate_lip_sync_asset(job)
+            return MediaAsset(
+                project_id=job.project_id,
+                type=MediaType.lip_synced_video,
+                provider=provider,
+                storage_url=storage_url,
+                mime_type="video/mp4",
+                duration_seconds=duration_seconds,
+                width=1080,
+                height=1920,
                 metadata=metadata,
             )
         case JobType.final_export:
@@ -506,6 +525,42 @@ def _generate_audio_asset(
             },
         )
     except KokoroTTSFailed:
+        raise
+
+
+def _generate_lip_sync_asset(
+    job: GenerationJob,
+) -> tuple[str, str, float | None, dict[str, object]]:
+    generated_video_asset_id = job.input.get("generated_video_asset_id")
+    audio_asset_id = job.input.get("audio_asset_id")
+    bbox_shift = job.input.get("bbox_shift", 0)
+    if not isinstance(generated_video_asset_id, str) or not isinstance(audio_asset_id, str):
+        raise ValueError("Lip-sync requires generated video and audio assets")
+    if not isinstance(bbox_shift, int):
+        raise ValueError("Lip-sync bbox_shift must be an integer")
+
+    generated_video = store.state.media_assets.get(UUID(generated_video_asset_id))
+    audio = store.state.media_assets.get(UUID(audio_asset_id))
+    if generated_video is None or audio is None:
+        raise ValueError("Lip-sync source assets not found")
+
+    try:
+        storage_url, duration_seconds, metadata = generate_musetalk_lip_sync(
+            project_id=job.project_id,
+            video_asset=generated_video,
+            audio_asset=audio,
+            bbox_shift=bbox_shift,
+        )
+        return storage_url, "musetalk", duration_seconds, metadata
+    except MuseTalkLipSyncUnavailable as error:
+        storage_url, duration_seconds, metadata = copy_video_as_mock_lip_sync(
+            project_id=job.project_id,
+            video_asset=generated_video,
+            audio_asset=audio,
+            reason=str(error),
+        )
+        return storage_url, "mock-musetalk", duration_seconds, metadata
+    except MuseTalkLipSyncFailed:
         raise
 
 

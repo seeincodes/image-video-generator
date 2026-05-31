@@ -21,6 +21,15 @@ class Settings(BaseSettings):
     kokoro_repo_id: str = "hexgrad/Kokoro-82M"
     kokoro_voice: str = "af_heart"
     kokoro_lang_code: str = "a"
+    musetalk_enabled: bool = False
+    musetalk_repo_path: str | None = None
+    musetalk_model_dir: str | None = None
+    musetalk_result_dir: str = ".local/musetalk-results"
+    musetalk_python: str = "python"
+    musetalk_use_float16: bool = True
+    musetalk_gpu_id: int = 0
+    musetalk_batch_size: int = 8
+    musetalk_timeout_seconds: int = 900
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
