@@ -52,3 +52,22 @@ export type ProjectDetail = Project & {
   media_assets: MediaAsset[];
   jobs: GenerationJob[];
 };
+
+export type TopicIdea = {
+  id: string;
+  title: string;
+  hook: string;
+  angle: string;
+  image_prompt: string;
+  negative_prompt: string;
+  motion_prompt: string;
+  narration: string;
+  style: string;
+  aspect_ratio: string;
+  image_option_count: number;
+};
+
+export type TopicResearchResponse = {
+  provider: "openai" | "mock-topic-research";
+  ideas: TopicIdea[];
+};

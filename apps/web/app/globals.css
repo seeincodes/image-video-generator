@@ -112,6 +112,12 @@ h1 {
   gap: 10px;
 }
 
+.research-provider {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .topic-card {
   display: grid;
   gap: 6px;

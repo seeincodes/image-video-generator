@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.routers import jobs, projects, providers, uploads, voices
+from app.routers import jobs, projects, providers, research, uploads, voices
 
 app = FastAPI(title="Image Video Voice API")
 
@@ -21,6 +21,7 @@ app.include_router(uploads.router, prefix="/uploads", tags=["uploads"])
 app.include_router(voices.router, prefix="/voices", tags=["voices"])
 app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 app.include_router(providers.router, prefix="/providers", tags=["providers"])
+app.include_router(research.router, prefix="/research", tags=["research"])
 
 
 @app.get("/health")

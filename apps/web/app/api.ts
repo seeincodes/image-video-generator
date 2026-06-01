@@ -1,4 +1,4 @@
-import type { GenerationJob, MediaAsset, Project, ProjectDetail } from "./types";
+import type { GenerationJob, MediaAsset, Project, ProjectDetail, TopicResearchResponse } from "./types";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -67,6 +67,13 @@ export function generateImage(
   },
 ) {
   return request<GenerationJob>(`/projects/${projectId}/generate-image`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function researchTopics(input: { niche: string; audience: string; goal: string }) {
+  return request<TopicResearchResponse>("/research/topics", {
     method: "POST",
     body: JSON.stringify(input),
   });
