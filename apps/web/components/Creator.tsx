@@ -11,11 +11,19 @@ import {
   getProject,
   lipSync,
   listProjects,
+  researchTopics,
   toAssetUrl,
   uploadReferenceImage,
   updateProject,
 } from "@/app/api";
-import type { GenerationJob, MediaAsset, MediaType, Project, ProjectDetail } from "@/app/types";
+import type {
+  GenerationJob,
+  MediaAsset,
+  MediaType,
+  Project,
+  ProjectDetail,
+  TopicIdea,
+} from "@/app/types";
 
 const pollIntervalMs = 2000;
 
@@ -33,20 +41,6 @@ type CreatorTemplate = {
   id: string;
   title: string;
   description: string;
-  imagePrompt: string;
-  negativePrompt: string;
-  motionPrompt: string;
-  narration: string;
-  style: string;
-  aspectRatio: string;
-  imageOptionCount: number;
-};
-
-type TopicIdea = {
-  id: string;
-  title: string;
-  hook: string;
-  angle: string;
   imagePrompt: string;
   negativePrompt: string;
   motionPrompt: string;
@@ -110,33 +104,6 @@ const topicResearchDefaults = {
   goal: "help them make better short videos",
 };
 
-const topicResearchAngles = [
-  {
-    id: "myth",
-    title: "Myth-busting",
-    hookPrefix: "The biggest myth about",
-    visual: "a split-screen myth versus reality explainer scene",
-    motion: "Smooth side-by-side reveal, gentle emphasis pulses, stable camera",
-    narrationPrefix: "Most people get this wrong:",
-  },
-  {
-    id: "mistakes",
-    title: "Common mistakes",
-    hookPrefix: "3 mistakes people make with",
-    visual: "three clean mistake cards floating around a central creator workstation",
-    motion: "Cards slide in one by one, subtle camera push, clear readable composition",
-    narrationPrefix: "Here are three mistakes to avoid when working on",
-  },
-  {
-    id: "workflow",
-    title: "Simple workflow",
-    hookPrefix: "A simple workflow for",
-    visual: "a clean step-by-step workflow board with bright connected icons",
-    motion: "Camera pans across each step, icons drift gently, calm tutorial pacing",
-    narrationPrefix: "Use this simple workflow next time you need",
-  },
-];
-
 export function Creator() {
   const [imagePrompt, setImagePrompt] = useState(defaultPrompts.imagePrompt);
   const [negativePrompt, setNegativePrompt] = useState(defaultPrompts.negativePrompt);
@@ -149,6 +116,7 @@ export function Creator() {
   const [topicAudience, setTopicAudience] = useState(topicResearchDefaults.audience);
   const [topicGoal, setTopicGoal] = useState(topicResearchDefaults.goal);
   const [topicIdeas, setTopicIdeas] = useState<TopicIdea[]>([]);
+  const [topicResearchProvider, setTopicResearchProvider] = useState<string | null>(null);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [referenceImageFile, setReferenceImageFile] = useState<File | null>(null);
@@ -277,26 +245,34 @@ export function Creator() {
     setImageOptionCount(template.imageOptionCount);
   }
 
-  function handleResearchTopics() {
-    const ideas = buildTopicIdeas({
-      audience: topicAudience,
-      goal: topicGoal,
-      niche: topicNiche,
-    });
-    setTopicIdeas(ideas);
-    setSelectedTopicId(null);
+  async function handleResearchTopics() {
+    setError(null);
+    setTopicResearchProvider(null);
+
+    try {
+      const response = await researchTopics({
+        audience: topicAudience,
+        goal: topicGoal,
+        niche: topicNiche,
+      });
+      setTopicIdeas(response.ideas);
+      setTopicResearchProvider(response.provider);
+      setSelectedTopicId(null);
+    } catch (researchError) {
+      setError(researchError instanceof Error ? researchError.message : "Topic research failed");
+    }
   }
 
   function handleApplyTopicIdea(topic: TopicIdea) {
     setSelectedTopicId(topic.id);
     setSelectedTemplateId(null);
-    setImagePrompt(topic.imagePrompt);
-    setNegativePrompt(topic.negativePrompt);
-    setMotionPrompt(topic.motionPrompt);
+    setImagePrompt(topic.image_prompt);
+    setNegativePrompt(topic.negative_prompt);
+    setMotionPrompt(topic.motion_prompt);
     setNarration(topic.narration);
     setStyle(topic.style);
-    setAspectRatio(topic.aspectRatio);
-    setImageOptionCount(topic.imageOptionCount);
+    setAspectRatio(topic.aspect_ratio);
+    setImageOptionCount(topic.image_option_count);
   }
 
   async function handleGenerateVideo() {
@@ -603,6 +579,11 @@ export function Creator() {
             </button>
             {topicIdeas.length > 0 ? (
               <div className="topic-grid">
+                {topicResearchProvider ? (
+                  <p className="research-provider">
+                    Topic source: {formatTopicProvider(topicResearchProvider)}
+                  </p>
+                ) : null}
                 {topicIdeas.map((topic) => (
                   <button
                     className={`topic-card ${topic.id === selectedTopicId ? "selected" : ""}`}
@@ -1020,50 +1001,6 @@ function imageOptionsForProject(project: ProjectDetail) {
   return project.media_assets.filter((asset) => asset.type === "generated_image");
 }
 
-function buildTopicIdeas({
-  audience,
-  goal,
-  niche,
-}: {
-  audience: string;
-  goal: string;
-  niche: string;
-}) {
-  const cleanNiche = cleanTopicInput(niche, topicResearchDefaults.niche);
-  const cleanAudience = cleanTopicInput(audience, topicResearchDefaults.audience);
-  const cleanGoal = cleanTopicInput(goal, topicResearchDefaults.goal);
-
-  return topicResearchAngles.map((angle, index) => {
-    const hook = `${angle.hookPrefix} ${cleanNiche}`;
-    return {
-      id: `${angle.id}-${slugifyTopic(cleanNiche)}`,
-      title: hook,
-      hook,
-      angle: `${angle.title} angle for ${cleanAudience}.`,
-      imagePrompt: `${angle.visual} about ${cleanNiche} for ${cleanAudience}, modern creator education style, polished social video thumbnail`,
-      negativePrompt: "tiny unreadable text, watermark, cluttered layout, distorted hands",
-      motionPrompt: `${angle.motion}, optimized for a short ${index === 0 ? "hook" : "explainer"} video`,
-      narration: `${angle.narrationPrefix} ${cleanNiche}. In the next few seconds, I’ll show ${cleanAudience} how to ${cleanGoal}.`,
-      style: index === 0 ? "Photographic" : "Design",
-      aspectRatio: "9:16",
-      imageOptionCount: 3,
-    };
-  });
-}
-
-function cleanTopicInput(value: string, fallback: string) {
-  const cleaned = value.trim().replace(/\s+/g, " ");
-  return cleaned.length > 0 ? cleaned : fallback;
-}
-
-function slugifyTopic(value: string) {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  return slug || "topic";
-}
-
 function readStringInput(job: GenerationJob | undefined, key: string) {
   const value = job?.input[key];
   return typeof value === "string" && value.length > 0 ? value : null;
@@ -1084,6 +1021,10 @@ function sortProjects(projects: Project[]) {
   return [...projects].sort(
     (left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime(),
   );
+}
+
+function formatTopicProvider(provider: string) {
+  return provider === "openai" ? "OpenAI research" : "Local fallback";
 }
 
 function delay(durationMs: number) {

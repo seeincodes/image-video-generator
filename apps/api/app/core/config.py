@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     openai_api_key: str | None = None
     openai_image_model: str = "gpt-image-1"
+    openai_topic_model: str = "gpt-4o-mini"
     runwayml_api_secret: str | None = None
     runway_api_base_url: str = "https://api.dev.runwayml.com"
     runway_api_version: str = "2024-11-06"
