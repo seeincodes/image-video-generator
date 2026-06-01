@@ -74,6 +74,83 @@ h1 {
   gap: 18px;
 }
 
+.research-panel {
+  display: grid;
+  gap: 14px;
+  border: 1px solid #c7d2fe;
+  border-radius: 22px;
+  background: linear-gradient(135deg, #eef2ff, #ffffff);
+  padding: 16px;
+}
+
+.research-panel span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.research-panel p {
+  margin: 0;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.research-fields {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.research-goal {
+  grid-column: 1 / -1;
+}
+
+.topic-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.topic-card {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  background: #ffffff;
+  color: #111827;
+  cursor: pointer;
+  padding: 12px;
+  text-align: left;
+}
+
+.topic-card.selected {
+  border-color: #4f46e5;
+  background: #eef2ff;
+  box-shadow: 0 0 0 4px rgb(79 70 229 / 0.12);
+}
+
+.topic-card strong {
+  font-size: 14px;
+}
+
+.topic-card span {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.topic-card small {
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.topic-card:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .template-panel {
   display: grid;
   gap: 12px;
